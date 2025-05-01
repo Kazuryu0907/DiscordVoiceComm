@@ -1,0 +1,151 @@
+use serenity::{
+    all::{EventHandler, GatewayIntents, GuildId, Ready},
+    async_trait, Client,
+};
+use songbird::{
+    input::{codecs::RawReader, Input, RawAdapter},
+    Config, SerenityInit, Songbird,
+};
+use std::{
+    io::Cursor,
+    sync::{Arc, OnceLock},
+};
+use symphonia::{
+    core::{codecs::CodecRegistry, probe::Probe},
+    default::{codecs::PcmDecoder, register_enabled_codecs, register_enabled_formats},
+};
+use tokio::sync::RwLock;
+
+use crate::vc::types::{JoinInfo, VoiceReceiverType};
+
+static CODEC_REGISTRY: OnceLock<CodecRegistry> = OnceLock::new();
+static PROBE: OnceLock<Probe> = OnceLock::new();
+static CTX: OnceLock<Arc<RwLock<serenity::prelude::Context>>> = OnceLock::new();
+
+pub struct Sub {}
+
+struct Handler;
+#[async_trait]
+impl EventHandler for Handler {
+    async fn ready(&self, ctx: serenity::prelude::Context, ready: Ready) {
+        println!("{} is connected!", ready.user.name);
+        CTX.set(Arc::new(RwLock::new(ctx))).unwrap();
+    }
+}
+
+fn i16tof32(pcm_data: Vec<i16>) -> Vec<f32> {
+    pcm_data
+        .iter()
+        .map(|sample| (*sample as f32) / 32768.0)
+        .collect()
+}
+// Vec<i16>のpcmデータからpcm f32用のVec<u8>の音声データを作成
+fn convert_voice_data(data: Vec<i16>) -> Vec<u8> {
+    let raw = i16tof32(data);
+    let bytes: Vec<u8> = raw
+        .iter()
+        .flat_map(|&sample| sample.to_le_bytes().to_vec())
+        .collect();
+    bytes
+}
+impl Sub {
+    pub fn new() -> Self {
+        Self {}
+    }
+    pub async fn create_client(&self, token: &str) -> Client {
+        let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+
+        Client::builder(token, intents)
+            .event_handler(Handler)
+            .register_songbird()
+            .await
+            .expect("error creating sub client")
+    }
+    pub async fn join(&self, join_info: JoinInfo, mut rx: VoiceReceiverType) {
+        let ctx = CTX.get();
+        let ctx_lock = match ctx {
+            None => {
+                println!("ctx None");
+                return;
+            }
+            Some(ctx) => ctx.clone(),
+        };
+        let ctx = ctx_lock.read().await;
+        let manager = songbird::get(&ctx).await;
+        let manager = match manager {
+            None => {
+                println!("songbird get error");
+                return;
+            }
+            Some(manager) => manager,
+        };
+        if let Ok(handler_lock) = manager.join(join_info.guild_id, join_info.channel_id).await {
+            {
+                let mut handler = handler_lock.lock().await;
+                let config = self.create_config();
+                handler.set_config(config);
+            }
+            let handler_lock = handler_lock.clone();
+            tokio::spawn(async move {
+                while let Some(d) = rx.recv().await {
+                    let pcm = convert_voice_data(d);
+                    let adapter = RawAdapter::new(Cursor::new(pcm), 48000, 2);
+                    let input = Input::from(adapter);
+                    // handlerをロックしないように毎回dropさせる
+                    let mut handler = handler_lock.lock().await;
+                    handler.play_input(input);
+                }
+            });
+        }
+    }
+    pub async fn leave(&self, guild_id: GuildId) -> Result<(), String> {
+        let manager = self.get_manager().await;
+        let manager = match manager {
+            None => {
+                return Err("songbird get error".to_owned());
+            }
+            Some(manager) => manager,
+        };
+        let has_handler = manager.get(guild_id).is_some();
+        if has_handler {
+            if let Err(e) = manager.remove(guild_id).await {
+                return Err(e.to_string());
+            }
+        } else {
+            return Err("Not in VC".to_string());
+        }
+        Ok(())
+    }
+    async fn get_manager(&self) -> Option<Arc<Songbird>> {
+        let ctx = CTX.get();
+        let ctx_lock = match ctx {
+            None => {
+                println!("ctx None");
+                return None;
+            }
+            Some(ctx) => ctx.clone(),
+        };
+        let ctx = ctx_lock.read().await;
+
+        songbird::get(&ctx).await
+    }
+
+    fn create_config(&self) -> Config {
+        let codec_registry = CODEC_REGISTRY.get_or_init(|| {
+            let mut registry = CodecRegistry::new();
+            register_enabled_codecs(&mut registry);
+            registry.register_all::<PcmDecoder>();
+            registry
+        });
+        let probe = PROBE.get_or_init(|| {
+            let mut probe = Probe::default();
+            probe.register_all::<RawReader>();
+            register_enabled_formats(&mut probe);
+            probe
+        });
+
+        Config::default()
+            .codec_registry(codec_registry)
+            .format_registry(probe)
+    }
+}
