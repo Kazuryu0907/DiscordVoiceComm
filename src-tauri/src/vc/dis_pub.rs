@@ -1,7 +1,6 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, OnceLock,
-};
+use std::{collections::HashMap, sync::{
+    atomic::{AtomicBool, Ordering}, Arc, LazyLock, OnceLock
+}};
 
 use dashmap::DashMap;
 
@@ -20,23 +19,27 @@ use songbird::{
         id::UserId,
         payload::{ClientDisconnect, Speaking},
     },
-    packet::Packet,
     Call, Config, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler, SerenityInit,
     Songbird,
 };
-// use tokio::sync::broadcast::Sender;
 use tokio::sync::RwLock;
 
 use crate::vc::types::{JoinInfo, VoiceSenderType};
 
-static CTX: OnceLock<Arc<RwLock<serenity::prelude::Context>>> = OnceLock::new();
+// 複数Speakerに対応するためのHashMap
+// KeyはDiscordのusername
+static CTXS: LazyLock<Arc<RwLock<HashMap<String,serenity::prelude::Context>>>> = LazyLock::new(|| {
+    Arc::new(RwLock::new(HashMap::new()))
+});
 struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: serenity::prelude::Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
-        CTX.set(Arc::new(RwLock::new(ctx))).unwrap();
+        let key = &ready.user.name;
+        let mut ctxs = CTXS.write().await;
+        ctxs.insert(key.to_owned(), ctx);
     }
 }
 
@@ -196,21 +199,28 @@ impl VoiceEventHandler for Receiver {
     }
 }
 
-pub struct Pub {}
+pub struct Pub {
+    user_name: String
+}
 
 impl Pub {
     pub fn new() -> Self {
-        Pub {}
+        Pub {
+            user_name:"".to_string()
+        }
     }
-    pub async fn create_client(&self, token: &str) -> Client {
+    pub async fn create_client(&mut self, token: &str) -> Client {
         let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
         let songbird_config = Config::default().decode_mode(DecodeMode::Decode);
 
-        ClientBuilder::new(token, intents)
+        let client = ClientBuilder::new(token, intents)
             .event_handler(Handler)
             .register_songbird_from_config(songbird_config)
             .await
-            .expect("Err creating client")
+            .expect("Err creating client");
+        let user_name = client.http.get_current_user().await.unwrap().name.clone();
+        self.user_name = user_name;
+        client
     }
     pub async fn join(&self, join_info: JoinInfo, tx: VoiceSenderType) {
         let manager = self.get_manager().await;
@@ -229,15 +239,17 @@ impl Pub {
         self._join_vc(manager, join_info).await;
     }
     async fn get_manager(&self) -> Option<Arc<Songbird>> {
-        let ctx = CTX.get();
-        let ctx_lock = match ctx {
+        let ctx_hash_map = CTXS.read().await;
+        println!("ctx key:{}",self.user_name);
+        let ctx = ctx_hash_map.get(&self.user_name);
+        let ctx = match ctx {
             None => {
                 println!("ctx None");
                 return None;
             }
             Some(ctx) => ctx.clone(),
         };
-        let ctx = ctx_lock.read().await;
+        // let ctx = ctx_lock.read().await;
 
         songbird::get(&ctx).await
     }
