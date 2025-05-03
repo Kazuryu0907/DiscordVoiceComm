@@ -1,6 +1,10 @@
-use std::{collections::HashMap, sync::{
-    atomic::{AtomicBool, Ordering}, Arc, LazyLock, OnceLock
-}};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, LazyLock,
+    },
+};
 
 use dashmap::DashMap;
 
@@ -28,9 +32,8 @@ use crate::vc::types::{JoinInfo, VoiceSenderType};
 
 // 複数Speakerに対応するためのHashMap
 // KeyはDiscordのusername
-static CTXS: LazyLock<Arc<RwLock<HashMap<String,serenity::prelude::Context>>>> = LazyLock::new(|| {
-    Arc::new(RwLock::new(HashMap::new()))
-});
+static CTXS: LazyLock<Arc<RwLock<HashMap<String, serenity::prelude::Context>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 struct Handler;
 
 #[async_trait]
@@ -200,13 +203,13 @@ impl VoiceEventHandler for Receiver {
 }
 
 pub struct Pub {
-    user_name: String
+    user_name: String,
 }
 
 impl Pub {
     pub fn new() -> Self {
         Pub {
-            user_name:"".to_string()
+            user_name: "".to_string(),
         }
     }
     pub async fn create_client(&mut self, token: &str) -> Client {
@@ -223,6 +226,7 @@ impl Pub {
         client
     }
     pub async fn join(&self, join_info: JoinInfo, tx: VoiceSenderType) {
+        println!("info:{:?}", join_info);
         let manager = self.get_manager().await;
         let manager = match manager {
             None => {
@@ -239,17 +243,19 @@ impl Pub {
         self._join_vc(manager, join_info).await;
     }
     async fn get_manager(&self) -> Option<Arc<Songbird>> {
-        let ctx_hash_map = CTXS.read().await;
-        println!("ctx key:{}",self.user_name);
-        let ctx = ctx_hash_map.get(&self.user_name);
-        let ctx = match ctx {
-            None => {
-                println!("ctx None");
-                return None;
-            }
-            Some(ctx) => ctx.clone(),
+        let ctx = {
+            let ctx_hash_map = CTXS.read().await;
+            println!("ctx key:{}", self.user_name);
+            let ctx = ctx_hash_map.get(&self.user_name);
+            let ctx = match ctx {
+                None => {
+                    println!("ctx None");
+                    return None;
+                }
+                Some(ctx) => ctx.clone(),
+            };
+            ctx
         };
-        // let ctx = ctx_lock.read().await;
 
         songbird::get(&ctx).await
     }

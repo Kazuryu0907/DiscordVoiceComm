@@ -1,5 +1,5 @@
 use serenity::{
-    all::{EventHandler, GatewayIntents, GuildId, Ready},
+    all::{EventHandler, GatewayIntents, GuildChannel, GuildId, Ready},
     async_trait, Client,
 };
 use songbird::{
@@ -53,7 +53,10 @@ impl Sub {
         Self {}
     }
     pub async fn create_client(&self, token: &str) -> Client {
-        let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+        let intents = GatewayIntents::non_privileged()
+            | GatewayIntents::MESSAGE_CONTENT
+            // Channelsに必要
+            | GatewayIntents::GUILDS;
 
         Client::builder(token, intents)
             .event_handler(Handler)
@@ -115,6 +118,24 @@ impl Sub {
             return Err("Not in VC".to_string());
         }
         Ok(())
+    }
+    pub async fn get_voice_channels(&self, guild_id: GuildId) -> Result<Vec<GuildChannel>, String> {
+        let ctx = CTX.get();
+        let ctx_lock = match ctx {
+            None => {
+                return Err("ctx None".to_owned());
+            }
+            Some(ctx) => ctx.clone(),
+        };
+        let ctx = ctx_lock.read().await;
+        let guild = ctx.http.get_guild(guild_id).await.unwrap();
+        let channels = guild.channels(ctx.http.clone()).await.unwrap();
+        let voice_channels: Vec<GuildChannel> = channels
+            .iter()
+            .map(|(_, channel)| channel.clone())
+            .filter(|channel| channel.bitrate.is_some())
+            .collect();
+        Ok(voice_channels)
     }
     async fn get_manager(&self) -> Option<Arc<Songbird>> {
         let ctx = CTX.get();

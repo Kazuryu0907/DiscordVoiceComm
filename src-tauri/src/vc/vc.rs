@@ -1,56 +1,44 @@
-use serenity::Client;
-use tokio::sync::mpsc::UnboundedReceiver;
+use std::time::Duration;
 
 use crate::vc::dis_pub::Pub;
-use crate::vc::sub::Sub;
+use crate::vc::dis_sub::Sub;
 use crate::vc::types::JoinInfo;
+use serenity::{
+    all::{ChannelId, GuildId},
+    futures::future::join_all,
+};
 pub struct VC {
-    pub_token: String,
-    pub_token2: String,
-    sub_token: String,
+    guild_id: GuildId,
     dis_pub: Pub,
     dis_pub2: Pub,
     dis_sub: Sub,
-    pub_info: JoinInfo,
-    pub_info2: JoinInfo,
-    sub_info: JoinInfo,
 }
 
 impl VC {
-    pub fn new(pub_token: &str,pub_token2: &str, sub_token: &str) -> Self {
+    pub fn new(guild_id: GuildId) -> Self {
         VC {
-            pub_token: pub_token.to_owned(),
-            pub_token2: pub_token2.to_owned(),
-            sub_token: sub_token.to_owned(),
+            guild_id,
             dis_pub: Pub::new(),
             dis_pub2: Pub::new(),
             dis_sub: Sub::new(),
-            pub_info: JoinInfo::default(),
-            pub_info2: JoinInfo::default(),
-            sub_info: JoinInfo::default(),
         }
     }
-    pub fn event_handler(&self, mut rx: UnboundedReceiver<String>) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            while let Some(d) = rx.recv().await {
-                println!("receive: {}", d);
-            }
-        })
-    }
-    pub async fn start_bot(&mut self) -> tokio::task::JoinHandle<()>{
+    pub async fn start_bot(
+        &mut self,
+        pub_token: &str,
+        pub_token2: &str,
+        sub_token: &str,
+    ) -> tokio::task::JoinHandle<()> {
         // spawn clients
-        let pub_token = self.pub_token.to_owned();
-        let pub_token2 = self.pub_token2.to_owned();
-        let sub_token = self.sub_token.to_owned();
-        let mut client_sub = self.dis_sub.create_client(&sub_token).await;
-        let mut client_pub = self.dis_pub.create_client(&pub_token).await;
-        let mut client_pub2 = self.dis_pub2.create_client(&pub_token2).await;
+        let mut client_sub = self.dis_sub.create_client(sub_token).await;
+        let mut client_pub = self.dis_pub.create_client(pub_token).await;
+        let mut client_pub2 = self.dis_pub2.create_client(pub_token2).await;
         tokio::spawn(async move {
             if let Err(why) = client_pub.start().await {
                 println!("Err with pub client: {:?}", why);
             }
         });
-        tokio::spawn(async move{
+        tokio::spawn(async move {
             if let Err(why) = client_pub2.start().await {
                 println!("Err with pub2 client: {:?}", why);
             }
@@ -61,20 +49,50 @@ impl VC {
             }
         })
     }
-    pub async fn join(&mut self, pub_info: JoinInfo,pub_info2:JoinInfo, sub_info: JoinInfo) {
-        // let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<i16>>();
+    pub async fn join(&self, pub_info: ChannelId, pub_info2: ChannelId, sub_info: ChannelId) {
         let (tx, rx) = tokio::sync::mpsc::channel::<Vec<i16>>(16);
-        self.dis_pub.join(pub_info, tx.clone()).await;
-        self.dis_pub2.join(pub_info2, tx).await;
-        self.dis_sub.join(sub_info, rx).await;
-        self.pub_info = pub_info;
-        self.pub_info2 = pub_info2;
-        self.sub_info = sub_info;
+        let futures = vec![
+            self.dis_pub.join(
+                JoinInfo {
+                    guild_id: self.guild_id,
+                    channel_id: pub_info,
+                },
+                tx.clone(),
+            ),
+            self.dis_pub2.join(
+                JoinInfo {
+                    guild_id: self.guild_id,
+                    channel_id: pub_info2,
+                },
+                tx,
+            ),
+        ];
+        join_all(futures).await;
+        self.dis_sub
+            .join(
+                JoinInfo {
+                    guild_id: self.guild_id,
+                    channel_id: sub_info,
+                },
+                rx,
+            )
+            .await;
     }
 
     pub async fn leave(&self) {
-        self.dis_pub.leave(self.pub_info.guild_id).await.unwrap();
-        self.dis_pub2.leave(self.pub_info2.guild_id).await.unwrap();
-        self.dis_sub.leave(self.sub_info.guild_id).await.unwrap();
+        let guild_id = self.guild_id;
+        self.dis_pub.leave(guild_id).await.unwrap();
+        self.dis_pub2.leave(guild_id).await.unwrap();
+        self.dis_sub.leave(guild_id).await.unwrap();
+    }
+
+    pub async fn get_voice_channels(&self) -> Vec<serenity::all::GuildChannel> {
+        loop {
+            let res = self.dis_sub.get_voice_channels(self.guild_id).await;
+            if let Ok(voice_channels) = res {
+                return voice_channels;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 }
