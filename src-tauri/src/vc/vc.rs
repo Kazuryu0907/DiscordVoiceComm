@@ -4,23 +4,33 @@ use crate::vc::dis_pub::Pub;
 use crate::vc::dis_sub::Sub;
 use crate::vc::types::JoinInfo;
 use serenity::{
-    all::{ChannelId, GuildId},
+    all::{ChannelId, GuildId, UserId},
     futures::future::join_all,
+};
+use tauri::AppHandle;
+
+use super::{
+    types::{PubIdentify, VoiceChannelType, VoiceType},
+    voice_manager::VoiceManager,
 };
 pub struct VC {
     guild_id: GuildId,
     dis_pub: Pub,
     dis_pub2: Pub,
     dis_sub: Sub,
+    voice_manager: VoiceManager,
+    token: Option<String>,
 }
 
 impl VC {
     pub fn new(guild_id: GuildId) -> Self {
         VC {
             guild_id,
-            dis_pub: Pub::new(),
-            dis_pub2: Pub::new(),
+            dis_pub: Pub::new(PubIdentify::Track1),
+            dis_pub2: Pub::new(PubIdentify::Track2),
             dis_sub: Sub::new(),
+            voice_manager: VoiceManager::new(),
+            token: None,
         }
     }
     pub async fn start_bot(
@@ -33,6 +43,8 @@ impl VC {
         let mut client_sub = self.dis_sub.create_client(sub_token).await;
         let mut client_pub = self.dis_pub.create_client(pub_token).await;
         let mut client_pub2 = self.dis_pub2.create_client(pub_token2).await;
+        self.token = Some(pub_token.to_owned());
+
         tokio::spawn(async move {
             if let Err(why) = client_pub.start().await {
                 println!("Err with pub client: {:?}", why);
@@ -49,32 +61,45 @@ impl VC {
             }
         })
     }
-    pub async fn join(&self, pub_info: ChannelId, pub_info2: ChannelId, sub_info: ChannelId) {
-        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<i16>>(16);
+    pub async fn join(
+        &self,
+        app: AppHandle,
+        pub_info: ChannelId,
+        pub_info2: ChannelId,
+        sub_info: ChannelId,
+    ) {
+        let (manager_tx, manager_rx) = tokio::sync::mpsc::channel::<VoiceChannelType>(16);
+        let (vc_tx, vc_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+        if let None = self.token {
+            return;
+        }
+        let token = self.token.clone().unwrap();
+        // Noneの時は上ではじいてるので，
         let futures = vec![
             self.dis_pub.join(
                 JoinInfo {
                     guild_id: self.guild_id,
                     channel_id: pub_info,
                 },
-                tx.clone(),
+                manager_tx.clone(),
             ),
             self.dis_pub2.join(
                 JoinInfo {
                     guild_id: self.guild_id,
                     channel_id: pub_info2,
                 },
-                tx,
+                manager_tx,
             ),
         ];
         join_all(futures).await;
+        self.voice_manager.start(app, token, manager_rx, vc_tx);
         self.dis_sub
             .join(
                 JoinInfo {
                     guild_id: self.guild_id,
                     channel_id: sub_info,
                 },
-                rx,
+                vc_rx,
             )
             .await;
     }
@@ -94,5 +119,10 @@ impl VC {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
+    }
+
+    // !次回はこれをtauri::commandにはやすところから
+    pub async fn update_volume(&self, user_id: UserId, volume: f32) {
+        self.voice_manager.update_volume(user_id, volume).await;
     }
 }

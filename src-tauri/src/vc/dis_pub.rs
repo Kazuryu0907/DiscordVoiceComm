@@ -9,7 +9,7 @@ use std::{
 use dashmap::DashMap;
 
 use serenity::{
-    all::{ClientBuilder, GuildId},
+    all::{CacheHttp, ClientBuilder, Context, GuildId, VoiceState},
     async_trait,
     client::EventHandler,
     model::gateway::Ready,
@@ -28,7 +28,11 @@ use songbird::{
 };
 use tokio::sync::RwLock;
 
-use crate::vc::types::{JoinInfo, VoiceSenderType};
+use crate::vc::types::{
+    JoinInfo, SendEnum, UserInfo, VoiceManagerSenderType, VoiceType, VoiceUserEvent,
+};
+
+use super::types::PubIdentify;
 
 // 複数Speakerに対応するためのHashMap
 // KeyはDiscordのusername
@@ -44,12 +48,21 @@ impl EventHandler for Handler {
         let mut ctxs = CTXS.write().await;
         ctxs.insert(key.to_owned(), ctx);
     }
+    // async fn voice_state_update(&self, ctx: serenity::prelude::Context,old: Option<VoiceState>,new: VoiceState){
+    //     println!("voice state:{} old:{}",new.user_id,old.is_some());
+    //     if let Some(old) = old {
+    //         if new.channel_id != old.channel_id {
+    //             println!("channel changed!");
+    //         }
+    //     }
+    // }
 }
 
 #[derive(Clone)]
 struct Receiver {
     inner: Arc<InnerReceiver>,
-    tx: VoiceSenderType,
+    tx: VoiceManagerSenderType,
+    identify: PubIdentify,
 }
 
 struct InnerReceiver {
@@ -58,7 +71,7 @@ struct InnerReceiver {
 }
 
 impl Receiver {
-    pub fn new(tx: VoiceSenderType) -> Self {
+    pub fn new(tx: VoiceManagerSenderType, identify: PubIdentify) -> Self {
         // You can manage state here, such as a buffer of audio packet bytes so
         // you can later store them in intervals.
         Self {
@@ -67,6 +80,7 @@ impl Receiver {
                 known_ssrcs: DashMap::new(),
             }),
             tx,
+            identify,
         }
     }
 }
@@ -101,6 +115,12 @@ impl VoiceEventHandler for Receiver {
 
                 if let Some(user) = user_id {
                     self.inner.known_ssrcs.insert(*ssrc, *user);
+                    let user_data = UserInfo {
+                        user_id: user.to_owned(),
+                        event: VoiceUserEvent::Join,
+                        identify: self.identify,
+                    };
+                    self.tx.send(SendEnum::UserData(user_data)).await.unwrap();
                 }
             }
             Ctx::VoiceTick(tick) => {
@@ -122,10 +142,18 @@ impl VoiceEventHandler for Receiver {
                     // You can also examine tick.silent to see users who are present
                     // but haven't spoken in this tick.
                     for (ssrc, data) in &tick.speaking {
-                        let user_id_str = if let Some(id) = self.inner.known_ssrcs.get(ssrc) {
-                            format!("{:?}", *id)
+                        let user = self.inner.known_ssrcs.get(ssrc);
+                        // let user_id_str = if let Some(id) = user {
+                        //     format!("{:?}", *id)
+                        // } else {
+                        //     "?".into()
+                        // };
+                        // ! ここでNoneが返ってきてる
+                        // * userがssrcに登録される前に来たら，早期returnする
+                        let user_id = if let Some(id) = user {
+                            *id
                         } else {
-                            "?".into()
+                            return None;
                         };
 
                         // This field should *always* exist under DecodeMode::Decode.
@@ -139,7 +167,11 @@ impl VoiceEventHandler for Receiver {
                             );
                             // let track = Track::new_with_data(Input::Live(decoded_voice,None), user_data);
                             let pcm = decoded_voice.to_vec();
-                            self.tx.send(pcm).await.expect("tx send failed");
+                            let send_data = VoiceType::new(user_id, pcm, self.identify.clone());
+                            self.tx
+                                .send(SendEnum::VoiceData(send_data))
+                                .await
+                                .expect("tx send failed");
                             if let Some(packet) = &data.packet {
                                 let rtp = packet.rtp();
                                 // println!(
@@ -148,10 +180,10 @@ impl VoiceEventHandler for Receiver {
                                 //     rtp.get_timestamp().0
                                 // );
                             } else {
-                                println!("\t{ssrc}/{user_id_str}: Missed packet -- {audio_str}");
+                                // println!("\t{ssrc}/{user_id_str}: Missed packet -- {audio_str}");
                             }
                         } else {
-                            println!("\t{ssrc}/{user_id_str}: Decode disabled.");
+                            // println!("\t{ssrc}/{user_id_str}: Decode disabled.");
                         }
                     }
                 }
@@ -189,7 +221,12 @@ impl VoiceEventHandler for Receiver {
                 // voice channel e.g., finalise processing of statistics etc.
                 // You will typically need to map the User ID to their SSRC; observed when
                 // first speaking.
-
+                let user_data = UserInfo {
+                    user_id: user_id.to_owned(),
+                    event: VoiceUserEvent::Leave,
+                    identify: self.identify,
+                };
+                self.tx.send(SendEnum::UserData(user_data)).await.unwrap();
                 println!("Client disconnected: user {:?}", user_id);
             }
             _ => {
@@ -204,12 +241,14 @@ impl VoiceEventHandler for Receiver {
 
 pub struct Pub {
     user_name: String,
+    identify: PubIdentify,
 }
 
 impl Pub {
-    pub fn new() -> Self {
+    pub fn new(identify: PubIdentify) -> Self {
         Pub {
             user_name: "".to_string(),
+            identify,
         }
     }
     pub async fn create_client(&mut self, token: &str) -> Client {
@@ -225,7 +264,7 @@ impl Pub {
         self.user_name = user_name;
         client
     }
-    pub async fn join(&self, join_info: JoinInfo, tx: VoiceSenderType) {
+    pub async fn join(&self, join_info: JoinInfo, tx: VoiceManagerSenderType) {
         println!("info:{:?}", join_info);
         let manager = self.get_manager().await;
         let manager = match manager {
@@ -238,23 +277,46 @@ impl Pub {
         {
             let handler_lock = manager.clone().get_or_insert(join_info.guild_id);
             let mut handler = handler_lock.lock().await;
-            self.add_handler_event(&mut handler, tx).await;
+            self.add_handler_event(&mut handler, tx.clone()).await;
         }
         self._join_vc(manager, join_info).await;
+        // {
+        //     let ctx = self.get_ctx().await.unwrap();
+        //     let guild = ctx.http().get_guild(join_info.guild_id).await.unwrap();
+        //     let channels = guild.channels(ctx.http()).await.unwrap();
+        //     let channel = channels.get(&join_info.channel_id).unwrap();
+
+        //     let my_id = ctx.cache.current_user().id;
+        //     let members = channel.members(ctx.cache().unwrap()).unwrap();
+        //     let member_datas: Vec<UserInfo> = members
+        //         .iter()
+        //         .filter(|m| m.user.id != my_id)
+        //         .map(|m| UserInfo {
+        //             user_id: m.user.id,
+        //             user_name: m.display_name().to_owned(),
+        //         })
+        //         .collect();
+        //     tx.send(SendEnum::UserData(member_datas)).await.unwrap();
+        // }
+    }
+    async fn get_ctx(&self) -> Option<Context> {
+        let ctx_hash_map = CTXS.read().await;
+        println!("ctx key:{}", self.user_name);
+        let ctx = ctx_hash_map.get(&self.user_name);
+        let ctx = match ctx {
+            None => None,
+            Some(ctx) => Some(ctx.clone()),
+        };
+        ctx
     }
     async fn get_manager(&self) -> Option<Arc<Songbird>> {
-        let ctx = {
-            let ctx_hash_map = CTXS.read().await;
-            println!("ctx key:{}", self.user_name);
-            let ctx = ctx_hash_map.get(&self.user_name);
-            let ctx = match ctx {
-                None => {
-                    println!("ctx None");
-                    return None;
-                }
-                Some(ctx) => ctx.clone(),
-            };
-            ctx
+        let ctx = self.get_ctx().await;
+        let ctx = match ctx {
+            None => {
+                println!("ctx None");
+                return None;
+            }
+            Some(ctx) => ctx,
         };
 
         songbird::get(&ctx).await
@@ -282,8 +344,8 @@ impl Pub {
         }
         Ok(())
     }
-    async fn add_handler_event(&self, handler: &mut Call, tx: VoiceSenderType) {
-        let evt_receiver = Receiver::new(tx.clone());
+    async fn add_handler_event(&self, handler: &mut Call, tx: VoiceManagerSenderType) {
+        let evt_receiver = Receiver::new(tx.clone(), self.identify.clone());
         handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());

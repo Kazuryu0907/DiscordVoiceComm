@@ -1,8 +1,8 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod vc;
 
-use serenity::all::{ChannelId, GuildChannel, GuildId};
-use tauri::State;
+use serenity::all::{ChannelId, GuildChannel, GuildId, UserId};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::{runtime::Runtime, sync::Mutex};
 use vc::vc::VC;
 
@@ -18,7 +18,18 @@ async fn get_voice_channels(storage: State<'_, Storage>) -> Result<Vec<GuildChan
 }
 
 #[tauri::command(rename_all = "snake_case")]
+async fn update_volume(
+    user_id: UserId,
+    volume: f32,
+    storage: State<'_, Storage>,
+) -> Result<(), String> {
+    let vc = storage.vc.lock().await;
+    vc.update_volume(user_id, volume).await;
+    Ok(())
+}
+#[tauri::command(rename_all = "snake_case")]
 async fn join(
+    app: AppHandle,
     ch1: String,
     ch2: String,
     sub_ch: String,
@@ -26,9 +37,7 @@ async fn join(
 ) -> Result<(), ()> {
     let vc = storage.vc.lock().await;
     vc.join(
-        // ChannelId::new(950683443266748420),
-        // ChannelId::new(951051352665104404),
-        // ChannelId::new(1368044397731778710),
+        app,
         ChannelId::new(ch1.parse::<u64>().unwrap()),
         ChannelId::new(ch2.parse::<u64>().unwrap()),
         ChannelId::new(sub_ch.parse::<u64>().unwrap()),
@@ -60,9 +69,15 @@ pub fn run() {
     });
 
     tauri::Builder::default()
+        // .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Storage { vc: Mutex::new(vc) })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![join, leave, get_voice_channels])
+        .invoke_handler(tauri::generate_handler![
+            join,
+            leave,
+            get_voice_channels,
+            update_volume
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

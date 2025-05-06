@@ -16,7 +16,9 @@ use symphonia::{
 };
 use tokio::sync::RwLock;
 
-use crate::vc::types::{JoinInfo, VoiceReceiverType};
+use crate::vc::types::{JoinInfo, VoiceManagerReceiverType};
+
+use super::types::{SendEnum, VoiceReceiverType};
 
 static CODEC_REGISTRY: OnceLock<CodecRegistry> = OnceLock::new();
 static PROBE: OnceLock<Probe> = OnceLock::new();
@@ -33,21 +35,6 @@ impl EventHandler for Handler {
     }
 }
 
-fn i16tof32(pcm_data: Vec<i16>) -> Vec<f32> {
-    pcm_data
-        .iter()
-        .map(|sample| (*sample as f32) / 32768.0)
-        .collect()
-}
-// Vec<i16>のpcmデータからpcm f32用のVec<u8>の音声データを作成
-fn convert_voice_data(data: Vec<i16>) -> Vec<u8> {
-    let raw = i16tof32(data);
-    let bytes: Vec<u8> = raw
-        .iter()
-        .flat_map(|&sample| sample.to_le_bytes().to_vec())
-        .collect();
-    bytes
-}
 impl Sub {
     pub fn new() -> Self {
         Self {}
@@ -91,7 +78,8 @@ impl Sub {
             let handler_lock = handler_lock.clone();
             tokio::spawn(async move {
                 while let Some(d) = rx.recv().await {
-                    let pcm = convert_voice_data(d);
+                    // println!("+len:{}",rx.len());
+                    let pcm = d;
                     let adapter = RawAdapter::new(Cursor::new(pcm), 48000, 2);
                     let input = Input::from(adapter);
                     // handlerをロックしないように毎回dropさせる
