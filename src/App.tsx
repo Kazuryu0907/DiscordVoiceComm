@@ -30,10 +30,11 @@ function LabelSelect({
     </form>
   );
 }
+type IdentifyType = "Track1" | "Track2";
 type EmitDataType = {
   user_id: string;
   event: "Join" | "Leave";
-  identify: "Track1" | "Track2";
+  identify: IdentifyType
   name: string;
 };
 
@@ -101,6 +102,27 @@ const Users = ({ identify }: { identify: "Track1" | "Track2" }) => {
 };
 
 
+const Listening = ({identify}:{identify: IdentifyType}) => {
+  const [listening,setListening] = useState(false);
+  useEffect(()=>{
+    type updateListeningType = {
+      identify: IdentifyType,
+      is_listening: boolean
+    };
+    const payload: updateListeningType = {
+      identify,
+      is_listening: listening
+    };
+    invoke("update_is_listening",payload);
+  },[listening]);
+  return(
+    <div>
+      <p>Listen</p>
+      <input type="checkbox" checked={listening} onChange={e => setListening(e.target.checked)} />
+    </div>
+  )
+}
+
 function App() {
   const [vcs, setVCs] = useState<VcType[]>([]);
   const [channelId, setChannelId] = useState<string>("");
@@ -140,6 +162,7 @@ function App() {
       </div>
       <div className="grid grid-cols-2 mt-8">
         <div className=" font-bold text-lg">
+          <Listening identify="Track1"/>
           <p>Speaker1</p>
           <LabelSelect
             // channelId={channelId}
@@ -149,6 +172,7 @@ function App() {
           <Users identify="Track1" />
         </div>
         <div className="flex-auto font-bold text-lg">
+          <Listening identify="Track2"/>
           <p>Speaker2</p>
           <LabelSelect
             // channelId={channelId2}

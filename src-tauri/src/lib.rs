@@ -4,7 +4,7 @@ mod vc;
 use serenity::all::{ChannelId, GuildChannel, GuildId, UserId};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::{runtime::Runtime, sync::Mutex};
-use vc::vc::VC;
+use vc::{types::PubIdentify, vc::VC};
 
 struct Storage {
     vc: Mutex<VC>,
@@ -25,6 +25,16 @@ async fn update_volume(
 ) -> Result<(), String> {
     let vc = storage.vc.lock().await;
     vc.update_volume(user_id, volume).await;
+    Ok(())
+}
+#[tauri::command(rename_all = "snake_case")]
+async fn update_is_listening(
+    identify: PubIdentify,
+    is_listening: bool,
+    storage: State<'_, Storage>,
+) -> Result<(), String> {
+    let vc = storage.vc.lock().await;
+    vc.update_is_listening(identify, is_listening).await;
     Ok(())
 }
 #[tauri::command(rename_all = "snake_case")]
@@ -76,7 +86,8 @@ pub fn run() {
             join,
             leave,
             get_voice_channels,
-            update_volume
+            update_volume,
+            update_is_listening
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

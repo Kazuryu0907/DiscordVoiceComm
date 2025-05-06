@@ -121,7 +121,17 @@ impl VC {
         }
     }
 
-    // !次回はこれをtauri::commandにはやすところから
+    pub async fn update_is_listening(&self, identify: PubIdentify, is_listening: bool) {
+        match identify {
+            PubIdentify::Track1 => {
+                self.dis_pub.set_is_listening(is_listening).await;
+            }
+            PubIdentify::Track2 => {
+                self.dis_pub2.set_is_listening(is_listening).await;
+            }
+        }
+    }
+
     pub async fn update_volume(&self, user_id: UserId, volume: f32) {
         self.voice_manager.update_volume(user_id, volume).await;
     }

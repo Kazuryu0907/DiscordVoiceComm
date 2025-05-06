@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId, UserId};
 use songbird::model::id::UserId as VoiceUserId;
 #[derive(Clone, Copy, Debug)]
@@ -21,7 +21,7 @@ impl Default for JoinInfo {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum PubIdentify {
     Track1,
     Track2,

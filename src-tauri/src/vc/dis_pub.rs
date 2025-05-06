@@ -26,7 +26,7 @@ use songbird::{
     Call, Config, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler, SerenityInit,
     Songbird,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{OnceCell, RwLock};
 
 use crate::vc::types::{
     JoinInfo, SendEnum, UserInfo, VoiceManagerSenderType, VoiceType, VoiceUserEvent,
@@ -36,7 +36,10 @@ use super::types::PubIdentify;
 
 // 複数Speakerに対応するためのHashMap
 // KeyはDiscordのusername
+// ! idにしたほうが確実
 static CTXS: LazyLock<Arc<RwLock<HashMap<String, serenity::prelude::Context>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
+static ISLISTENING: LazyLock<Arc<RwLock<HashMap<String, bool>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 struct Handler;
 
@@ -45,17 +48,15 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: serenity::prelude::Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
         let key = &ready.user.name;
-        let mut ctxs = CTXS.write().await;
-        ctxs.insert(key.to_owned(), ctx);
+        {
+            let mut ctxs = CTXS.write().await;
+            ctxs.insert(key.to_owned(), ctx);
+        }
+        {
+            let mut is_listening = ISLISTENING.write().await;
+            is_listening.insert(key.to_owned(), false);
+        }
     }
-    // async fn voice_state_update(&self, ctx: serenity::prelude::Context,old: Option<VoiceState>,new: VoiceState){
-    //     println!("voice state:{} old:{}",new.user_id,old.is_some());
-    //     if let Some(old) = old {
-    //         if new.channel_id != old.channel_id {
-    //             println!("channel changed!");
-    //         }
-    //     }
-    // }
 }
 
 #[derive(Clone)]
@@ -63,6 +64,7 @@ struct Receiver {
     inner: Arc<InnerReceiver>,
     tx: VoiceManagerSenderType,
     identify: PubIdentify,
+    user_name: String,
 }
 
 struct InnerReceiver {
@@ -71,7 +73,7 @@ struct InnerReceiver {
 }
 
 impl Receiver {
-    pub fn new(tx: VoiceManagerSenderType, identify: PubIdentify) -> Self {
+    pub fn new(tx: VoiceManagerSenderType, identify: PubIdentify, user_name: String) -> Self {
         // You can manage state here, such as a buffer of audio packet bytes so
         // you can later store them in intervals.
         Self {
@@ -81,6 +83,7 @@ impl Receiver {
             }),
             tx,
             identify,
+            user_name,
         }
     }
 }
@@ -143,12 +146,6 @@ impl VoiceEventHandler for Receiver {
                     // but haven't spoken in this tick.
                     for (ssrc, data) in &tick.speaking {
                         let user = self.inner.known_ssrcs.get(ssrc);
-                        // let user_id_str = if let Some(id) = user {
-                        //     format!("{:?}", *id)
-                        // } else {
-                        //     "?".into()
-                        // };
-                        // ! ここでNoneが返ってきてる
                         // * userがssrcに登録される前に来たら，早期returnする
                         let user_id = if let Some(id) = user {
                             *id
@@ -165,13 +162,22 @@ impl VoiceEventHandler for Receiver {
                                 voice_len,
                                 &decoded_voice[..voice_len.min(5)]
                             );
-                            // let track = Track::new_with_data(Input::Live(decoded_voice,None), user_data);
                             let pcm = decoded_voice.to_vec();
                             let send_data = VoiceType::new(user_id, pcm, self.identify.clone());
-                            self.tx
-                                .send(SendEnum::VoiceData(send_data))
-                                .await
-                                .expect("tx send failed");
+                            let is_listening = {
+                                let map = ISLISTENING.read().await;
+                                let is_listening = map.get(&self.user_name);
+                                match is_listening {
+                                    None => false,
+                                    Some(l) => l.clone(),
+                                }
+                            };
+                            if is_listening {
+                                self.tx
+                                    .send(SendEnum::VoiceData(send_data))
+                                    .await
+                                    .expect("tx send failed");
+                            }
                             if let Some(packet) = &data.packet {
                                 let rtp = packet.rtp();
                                 // println!(
@@ -280,24 +286,10 @@ impl Pub {
             self.add_handler_event(&mut handler, tx.clone()).await;
         }
         self._join_vc(manager, join_info).await;
-        // {
-        //     let ctx = self.get_ctx().await.unwrap();
-        //     let guild = ctx.http().get_guild(join_info.guild_id).await.unwrap();
-        //     let channels = guild.channels(ctx.http()).await.unwrap();
-        //     let channel = channels.get(&join_info.channel_id).unwrap();
-
-        //     let my_id = ctx.cache.current_user().id;
-        //     let members = channel.members(ctx.cache().unwrap()).unwrap();
-        //     let member_datas: Vec<UserInfo> = members
-        //         .iter()
-        //         .filter(|m| m.user.id != my_id)
-        //         .map(|m| UserInfo {
-        //             user_id: m.user.id,
-        //             user_name: m.display_name().to_owned(),
-        //         })
-        //         .collect();
-        //     tx.send(SendEnum::UserData(member_datas)).await.unwrap();
-        // }
+    }
+    pub async fn set_is_listening(&self, is_listening: bool) {
+        let mut is_listening_writer = ISLISTENING.write().await;
+        is_listening_writer.insert(self.user_name.clone(), is_listening);
     }
     async fn get_ctx(&self) -> Option<Context> {
         let ctx_hash_map = CTXS.read().await;
@@ -345,7 +337,7 @@ impl Pub {
         Ok(())
     }
     async fn add_handler_event(&self, handler: &mut Call, tx: VoiceManagerSenderType) {
-        let evt_receiver = Receiver::new(tx.clone(), self.identify.clone());
+        let evt_receiver = Receiver::new(tx.clone(), self.identify.clone(), self.user_name.clone());
         handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());
