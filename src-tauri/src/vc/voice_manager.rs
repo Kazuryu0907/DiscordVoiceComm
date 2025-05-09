@@ -1,15 +1,7 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, LazyLock},
-    time::{self, Duration},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use serde::Serialize;
 use serenity::model::id::UserId;
-use serenity::{
-    all::{Cache, GuildId, Http},
-    futures::lock::Mutex,
-};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
 
@@ -68,9 +60,7 @@ pub struct VoiceManager {
 impl VoiceManager {
     pub fn new() -> Self {
         let user_volumes = Arc::new(RwLock::new(HashMap::new()));
-        VoiceManager {
-            user_volumes
-        }
+        VoiceManager { user_volumes }
     }
     // Spawn manager task
     pub fn start(

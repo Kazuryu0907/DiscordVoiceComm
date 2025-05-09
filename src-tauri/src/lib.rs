@@ -2,7 +2,7 @@
 mod vc;
 
 use serenity::all::{ChannelId, GuildChannel, GuildId, UserId};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, State};
 use tokio::{runtime::Runtime, sync::Mutex};
 use vc::{types::PubIdentify, vc_client::VC};
 

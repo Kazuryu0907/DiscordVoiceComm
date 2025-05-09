@@ -9,7 +9,7 @@ use std::{
 use dashmap::DashMap;
 
 use serenity::{
-    all::{CacheHttp, ClientBuilder, Context, GuildId, VoiceState},
+    all::{ClientBuilder, Context, GuildId},
     async_trait,
     client::EventHandler,
     model::gateway::Ready,
@@ -26,7 +26,7 @@ use songbird::{
     Call, Config, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler, SerenityInit,
     Songbird,
 };
-use tokio::sync::{OnceCell, RwLock};
+use tokio::sync::RwLock;
 
 use crate::vc::types::{
     JoinInfo, SendEnum, UserInfo, VoiceManagerSenderType, VoiceType, VoiceUserEvent,

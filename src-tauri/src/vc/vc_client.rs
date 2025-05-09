@@ -10,7 +10,7 @@ use serenity::{
 use tauri::AppHandle;
 
 use super::{
-    types::{PubIdentify, VoiceChannelType, VoiceType},
+    types::{PubIdentify, VoiceChannelType},
     voice_manager::VoiceManager,
 };
 pub struct VC {
@@ -33,12 +33,7 @@ impl VC {
             token: None,
         }
     }
-    pub async fn start_bot(
-        &mut self,
-        pub_token: &str,
-        pub_token2: &str,
-        sub_token: &str,
-    ) {
+    pub async fn start_bot(&mut self, pub_token: &str, pub_token2: &str, sub_token: &str) {
         // spawn clients
         let mut client_sub = self.dis_sub.create_client(sub_token).await;
         let mut client_pub = self.dis_pub.create_client(pub_token).await;

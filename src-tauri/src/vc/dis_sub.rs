@@ -16,9 +16,9 @@ use symphonia::{
 };
 use tokio::sync::RwLock;
 
-use crate::vc::types::{JoinInfo, VoiceManagerReceiverType};
+use crate::vc::types::JoinInfo;
 
-use super::types::{SendEnum, VoiceReceiverType};
+use super::types::VoiceReceiverType;
 
 static CODEC_REGISTRY: OnceLock<CodecRegistry> = OnceLock::new();
 static PROBE: OnceLock<Probe> = OnceLock::new();

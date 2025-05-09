@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, GuildId, UserId};
+use serenity::all::{ChannelId, GuildId};
 use songbird::model::id::UserId as VoiceUserId;
 #[derive(Clone, Copy, Debug)]
 pub struct JoinInfo {
