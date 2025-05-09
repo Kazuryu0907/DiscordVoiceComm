@@ -8,9 +8,10 @@ use serenity::{
     futures::future::join_all,
 };
 use tauri::AppHandle;
+use tracing::error;
 
 use super::{
-    types::{PubIdentify, VoiceChannelType},
+    types::{PubIdentify, UserVolumesType, VoiceChannelType},
     voice_manager::VoiceManager,
 };
 pub struct VC {
@@ -23,13 +24,13 @@ pub struct VC {
 }
 
 impl VC {
-    pub fn new(guild_id: GuildId) -> Self {
+    pub fn new(guild_id: GuildId, user_volumes: UserVolumesType) -> Self {
         VC {
             guild_id,
             dis_pub: Pub::new(PubIdentify::Track1),
             dis_pub2: Pub::new(PubIdentify::Track2),
             dis_sub: Sub::new(),
-            voice_manager: VoiceManager::new(),
+            voice_manager: VoiceManager::new(user_volumes),
             token: None,
         }
     }
@@ -42,17 +43,17 @@ impl VC {
 
         tokio::spawn(async move {
             if let Err(why) = client_pub.start().await {
-                println!("Err with pub client: {:?}", why);
+                error!("Err with pub client: {:?}", why);
             }
         });
         tokio::spawn(async move {
             if let Err(why) = client_pub2.start().await {
-                println!("Err with pub2 client: {:?}", why);
+                error!("Err with pub2 client: {:?}", why);
             }
         });
         tokio::spawn(async move {
             if let Err(why) = client_sub.start().await {
-                println!("Err with sub client: {:?}", why);
+                error!("Err with sub client: {:?}", why);
             }
         });
     }

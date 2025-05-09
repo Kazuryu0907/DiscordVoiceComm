@@ -15,6 +15,7 @@ use symphonia::{
     default::{codecs::PcmDecoder, register_enabled_codecs, register_enabled_formats},
 };
 use tokio::sync::RwLock;
+use tracing::{error, info};
 
 use crate::vc::types::JoinInfo;
 
@@ -30,7 +31,7 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: serenity::prelude::Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        info!("{} is connected!", ready.user.name);
         CTX.set(Arc::new(RwLock::new(ctx))).unwrap();
     }
 }
@@ -55,7 +56,7 @@ impl Sub {
         let ctx = CTX.get();
         let ctx_lock = match ctx {
             None => {
-                println!("ctx None");
+                error!("ctx None");
                 return;
             }
             Some(ctx) => ctx.clone(),
@@ -64,7 +65,7 @@ impl Sub {
         let manager = songbird::get(&ctx).await;
         let manager = match manager {
             None => {
-                println!("songbird get error");
+                error!("songbird get error");
                 return;
             }
             Some(manager) => manager,
@@ -129,7 +130,7 @@ impl Sub {
         let ctx = CTX.get();
         let ctx_lock = match ctx {
             None => {
-                println!("ctx None");
+                error!("ctx None");
                 return None;
             }
             Some(ctx) => ctx.clone(),

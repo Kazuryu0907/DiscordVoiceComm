@@ -1,13 +1,38 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod vc;
 
+use std::{collections::HashMap, sync::Arc};
+
+use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildChannel, GuildId, UserId};
-use tauri::{AppHandle, State};
-use tokio::{runtime::Runtime, sync::Mutex};
+use tauri::{AppHandle, Listener, State};
+use tokio::{runtime::Runtime, sync::{Mutex, RwLock}};
 use vc::{types::PubIdentify, vc_client::VC};
+use tracing::error;
 
 struct Storage {
     vc: Mutex<VC>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct MyConfig {
+    guild_id: GuildId,
+    speaker1_api: String,
+    speaker2_api: String,
+    listener_api: String,
+    user_volumes: HashMap<UserId,f32>
+}
+
+impl ::std::default::Default for MyConfig {
+    fn default() -> Self {
+        Self {
+            guild_id: GuildId::new(1),
+            speaker1_api: "API_HERE".to_owned(),
+            speaker2_api: "API_HERE".to_owned(),
+            listener_api: "API_HERE".to_owned(),
+            user_volumes: HashMap::new(),
+        }
+    }
 }
 
 #[tauri::command]
@@ -63,22 +88,30 @@ async fn leave(storage: State<'_, Storage>) -> Result<(), ()> {
     Ok(())
 }
 
-const GUILD_ID: GuildId = GuildId::new(950683443266748416);
+const ENV_PATH:&str = "./.env";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut vc = VC::new(GUILD_ID);
+    let cfg = confy::load_path::<MyConfig>(ENV_PATH).unwrap();
+    let mut cfg_cpy = cfg.clone();
+    let pub_token = cfg.speaker1_api;
+    let pub_token2 = cfg.speaker2_api;
+    let sub_token = cfg.listener_api;
+    let guild_id = cfg.guild_id;
+    let user_volumes = cfg.user_volumes;
+    let user_volumes = Arc::new(RwLock::new(user_volumes));
+    let mut vc = VC::new(guild_id,user_volumes.clone());
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
         vc.start_bot(
-            "OTUwNjgxNDk1OTQ3ODQ5NzM4.GDYX5e.UFP6qLgEoRxPZ0McRY1xQFQTT6rkBd1awp8ios",
-            "OTUxMDUyMDgwODc1OTY2NTE0.Gb2L5W.ycBGJKuodRIluJoFjjyBfgSXuz1ixpVvU69GQI",
-            "OTU4MDQ1MTg1NzA5ODM4MzQ2.GJBCO9.NYRkja-klexwYf1moVh2pypPU4yI-1Xq4u6avk",
+            &pub_token,
+            &pub_token2,
+            &sub_token
         )
         .await
     });
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         // .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Storage { vc: Mutex::new(vc) })
         .plugin(tauri_plugin_opener::init())
@@ -89,6 +122,19 @@ pub fn run() {
             update_volume,
             update_is_listening
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+    let exit_code = app.run_return(move |_app_handle, event| if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            let rt = Runtime::new().unwrap();
+            let user_volumes = user_volumes.clone();
+            let mut cfg_cpy = cfg_cpy.clone();
+            rt.block_on(async move {
+                let user_volumes_lock = user_volumes;
+                let user_volumes = user_volumes_lock.read().await;
+                cfg_cpy.user_volumes = user_volumes.clone();
+                confy::store_path(ENV_PATH, cfg_cpy).unwrap();
+            });
+            api.prevent_exit();
+    });
+    std::process::exit(exit_code);
 }

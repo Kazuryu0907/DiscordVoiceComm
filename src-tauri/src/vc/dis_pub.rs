@@ -7,6 +7,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use tracing::{debug, error, info};
 
 use serenity::{
     all::{ClientBuilder, Context, GuildId},
@@ -46,7 +47,7 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: serenity::prelude::Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        info!("{} is connected!", ready.user.name);
         let key = &ready.user.name;
         {
             let mut ctxs = CTXS.write().await;
@@ -111,7 +112,7 @@ impl VoiceEventHandler for Receiver {
                 // SSRCs and map the SSRC to the User ID and maintain this state.
                 // Using this map, you can map the `ssrc` in `voice_packet`
                 // to the user ID and handle their audio packets separately.
-                println!(
+                debug!(
                     "Speaking state update: user {:?} has SSRC {:?}, using {:?}",
                     user_id, ssrc, speaking,
                 );
@@ -132,7 +133,7 @@ impl VoiceEventHandler for Receiver {
                 let last_tick_was_empty = self.inner.last_tick_was_empty.load(Ordering::SeqCst);
 
                 if speaking == 0 && !last_tick_was_empty {
-                    println!("No speakers");
+                    debug!("No speakers");
 
                     self.inner.last_tick_was_empty.store(true, Ordering::SeqCst);
                 } else if speaking != 0 {
@@ -233,7 +234,7 @@ impl VoiceEventHandler for Receiver {
                     identify: self.identify,
                 };
                 self.tx.send(SendEnum::UserData(user_data)).await.unwrap();
-                println!("Client disconnected: user {:?}", user_id);
+                debug!("Client disconnected: user {:?}", user_id);
             }
             _ => {
                 // We won't be registering this struct for any more event classes.
@@ -271,11 +272,11 @@ impl Pub {
         client
     }
     pub async fn join(&self, join_info: JoinInfo, tx: VoiceManagerSenderType) {
-        println!("info:{:?}", join_info);
+        info!("info:{:?}", join_info);
         let manager = self.get_manager().await;
         let manager = match manager {
             None => {
-                println!("songbird get error");
+                error!("songbird get error");
                 return;
             }
             Some(manager) => manager,
@@ -293,7 +294,7 @@ impl Pub {
     }
     async fn get_ctx(&self) -> Option<Context> {
         let ctx_hash_map = CTXS.read().await;
-        println!("ctx key:{}", self.user_name);
+        debug!("ctx key:{}", self.user_name);
         let ctx = ctx_hash_map.get(&self.user_name);
         // ctx.map(|ctx| ctx.cloned())
         ctx.cloned()
@@ -302,7 +303,7 @@ impl Pub {
         let ctx = self.get_ctx().await;
         let ctx = match ctx {
             None => {
-                println!("ctx None");
+                error!("ctx None");
                 return None;
             }
             Some(ctx) => ctx,
@@ -345,7 +346,7 @@ impl Pub {
         if let Err(e) = manager.join(join_info.guild_id, join_info.channel_id).await {
             // Although we failed to join, we need to clear out existing event handlers on the call.
             _ = manager.remove(join_info.guild_id).await;
-            println!("failed to join vc:{:?}", e);
+            error!("failed to join vc:{:?}", e);
         }
     }
 }

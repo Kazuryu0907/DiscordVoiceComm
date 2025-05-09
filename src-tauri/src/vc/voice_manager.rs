@@ -4,10 +4,11 @@ use serde::Serialize;
 use serenity::model::id::UserId;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
+use tracing::{debug, info};
 
 use crate::vc::types::VoiceUserEvent;
 
-use super::types::{PubIdentify, SendEnum, UserInfo, VoiceManagerReceiverType, VoiceSenderType};
+use super::types::{PubIdentify, SendEnum, UserInfo, UserVolumesType, VoiceManagerReceiverType, VoiceSenderType};
 use songbird::model::id::UserId as VoiceUserId;
 
 fn i16tof32(pcm_data: Vec<i16>) -> Vec<f32> {
@@ -53,13 +54,13 @@ impl EmitData {
 pub struct VoiceManager {
     // user_volumes: Arc<Mutex<HashMap<UserId, f32>>>,
     // http: Http,
-    user_volumes: Arc<RwLock<HashMap<UserId, f32>>>,
+    user_volumes: UserVolumesType,
     // cache:Arc<Cache>
 }
 
 impl VoiceManager {
-    pub fn new() -> Self {
-        let user_volumes = Arc::new(RwLock::new(HashMap::new()));
+    pub fn new(user_volumes: UserVolumesType) -> Self {
+        let user_volumes = user_volumes.clone();
         VoiceManager { user_volumes }
     }
     // Spawn manager task
@@ -76,12 +77,11 @@ impl VoiceManager {
             let http = serenity::http::Http::new(&token);
             let id_name_map: HashMap<UserId, String> = HashMap::new();
             while let Some(d) = rx.recv().await {
-                // println!("len:{}",rx.len());
                 match d {
                     SendEnum::UserData(user_info) => {
                         // ~~普通に考えて，VC内で頻繁に出入りしなくない？~~
                         // 一定時間で再Hitする可能性はある
-                        println!("create user_id from {:?}", user_info.user_id);
+                        debug!("create user_id from {:?}", user_info.user_id);
                         let user_id = UserId::new(user_info.user_id.0);
                         let user_name = match id_name_map.get(&user_id) {
                             Some(user_name) => user_name.to_owned(),
@@ -99,7 +99,7 @@ impl VoiceManager {
                             if need_insert {
                                 let mut user_write = user_volumes.write().await;
                                 user_write.insert(user_id.to_owned(), 1.);
-                                println!("volume set {} to {}", user_name, 1.);
+                                info!("volume set {} to {}", user_name, 1.);
                             }
                         }
                         // let user_id = UserId::new(user_info.user_id.0);
@@ -130,6 +130,6 @@ impl VoiceManager {
         let user_volume = self.user_volumes.clone();
         let mut writer = user_volume.write().await;
         writer.insert(user_id, volume);
-        println!("uesr:{} volume updated to {}", user_id, volume);
+        info!("uesr:{} volume updated to {}", user_id, volume);
     }
 }
