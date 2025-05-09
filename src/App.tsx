@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+// import "./App.css";
+import { Button } from "@/components/ui/button";
 
 type VcType = { id: string; name: string };
 
@@ -123,6 +124,8 @@ const Listening = ({identify}:{identify: IdentifyType}) => {
   )
 }
 
+// ! Sliderの裏画面処理よろしく
+
 function App() {
   const [vcs, setVCs] = useState<VcType[]>([]);
   const [channelId, setChannelId] = useState<string>("");
@@ -160,6 +163,7 @@ function App() {
           vcs={vcs}
         />
       </div>
+      <Button>Click me</Button>
       <div className="grid grid-cols-2 mt-8">
         <div className=" font-bold text-lg">
           <Listening identify="Track1"/>

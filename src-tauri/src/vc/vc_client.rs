@@ -38,7 +38,7 @@ impl VC {
         pub_token: &str,
         pub_token2: &str,
         sub_token: &str,
-    ) -> tokio::task::JoinHandle<()> {
+    ) {
         // spawn clients
         let mut client_sub = self.dis_sub.create_client(sub_token).await;
         let mut client_pub = self.dis_pub.create_client(pub_token).await;
@@ -59,7 +59,7 @@ impl VC {
             if let Err(why) = client_sub.start().await {
                 println!("Err with sub client: {:?}", why);
             }
-        })
+        });
     }
     pub async fn join(
         &self,
@@ -70,7 +70,7 @@ impl VC {
     ) {
         let (manager_tx, manager_rx) = tokio::sync::mpsc::channel::<VoiceChannelType>(16);
         let (vc_tx, vc_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
-        if let None = self.token {
+        if self.token.is_none() {
             return;
         }
         let token = self.token.clone().unwrap();

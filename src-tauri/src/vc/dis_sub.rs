@@ -119,9 +119,9 @@ impl Sub {
         let guild = ctx.http.get_guild(guild_id).await.unwrap();
         let channels = guild.channels(ctx.http.clone()).await.unwrap();
         let voice_channels: Vec<GuildChannel> = channels
-            .iter()
-            .map(|(_, channel)| channel.clone())
+            .values()
             .filter(|channel| channel.bitrate.is_some())
+            .cloned()
             .collect();
         Ok(voice_channels)
     }

@@ -4,7 +4,7 @@ mod vc;
 use serenity::all::{ChannelId, GuildChannel, GuildId, UserId};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::{runtime::Runtime, sync::Mutex};
-use vc::{types::PubIdentify, vc::VC};
+use vc::{types::PubIdentify, vc_client::VC};
 
 struct Storage {
     vc: Mutex<VC>,

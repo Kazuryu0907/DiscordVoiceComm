@@ -18,8 +18,6 @@ use crate::vc::types::VoiceUserEvent;
 use super::types::{PubIdentify, SendEnum, UserInfo, VoiceManagerReceiverType, VoiceSenderType};
 use songbird::model::id::UserId as VoiceUserId;
 
-static USERVOLUME: LazyLock<Arc<HashMap<UserId, f32>>> = LazyLock::new(|| Arc::new(HashMap::new()));
-
 fn i16tof32(pcm_data: Vec<i16>) -> Vec<f32> {
     pcm_data
         .iter()
@@ -71,7 +69,7 @@ impl VoiceManager {
     pub fn new() -> Self {
         let user_volumes = Arc::new(RwLock::new(HashMap::new()));
         VoiceManager {
-            user_volumes: user_volumes,
+            user_volumes
         }
     }
     // Spawn manager task
@@ -126,7 +124,7 @@ impl VoiceManager {
                     SendEnum::VoiceData(u) => {
                         let user_volumes = user_volumes.read().await;
                         let volume = match user_volumes.get(&UserId::from(u.user_id.0)) {
-                            Some(v) => v.clone(),
+                            Some(v) => *v,
                             None => {
                                 unreachable!()
                             }

@@ -163,13 +163,13 @@ impl VoiceEventHandler for Receiver {
                                 &decoded_voice[..voice_len.min(5)]
                             );
                             let pcm = decoded_voice.to_vec();
-                            let send_data = VoiceType::new(user_id, pcm, self.identify.clone());
+                            let send_data = VoiceType::new(user_id, pcm);
                             let is_listening = {
                                 let map = ISLISTENING.read().await;
                                 let is_listening = map.get(&self.user_name);
                                 match is_listening {
                                     None => false,
-                                    Some(l) => l.clone(),
+                                    Some(l) => *l,
                                 }
                             };
                             if is_listening {
@@ -295,11 +295,8 @@ impl Pub {
         let ctx_hash_map = CTXS.read().await;
         println!("ctx key:{}", self.user_name);
         let ctx = ctx_hash_map.get(&self.user_name);
-        let ctx = match ctx {
-            None => None,
-            Some(ctx) => Some(ctx.clone()),
-        };
-        ctx
+        // ctx.map(|ctx| ctx.cloned())
+        ctx.cloned()
     }
     async fn get_manager(&self) -> Option<Arc<Songbird>> {
         let ctx = self.get_ctx().await;
@@ -337,7 +334,7 @@ impl Pub {
         Ok(())
     }
     async fn add_handler_event(&self, handler: &mut Call, tx: VoiceManagerSenderType) {
-        let evt_receiver = Receiver::new(tx.clone(), self.identify.clone(), self.user_name.clone());
+        let evt_receiver = Receiver::new(tx.clone(), self.identify, self.user_name.clone());
         handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());

@@ -7,11 +7,6 @@ pub struct JoinInfo {
     pub channel_id: ChannelId,
 }
 
-// pub struct UserInfo {
-//     pub user_id: UserId,
-//     pub user_name: String,
-// }
-
 impl Default for JoinInfo {
     fn default() -> Self {
         JoinInfo {
@@ -30,14 +25,12 @@ pub enum PubIdentify {
 pub struct VoiceType {
     pub user_id: VoiceUserId,
     pub voice_data: Vec<i16>,
-    pub identify: PubIdentify,
 }
 impl VoiceType {
-    pub fn new(user_id: VoiceUserId, voice_data: Vec<i16>, identify: PubIdentify) -> Self {
+    pub fn new(user_id: VoiceUserId, voice_data: Vec<i16>) -> Self {
         VoiceType {
             user_id,
             voice_data,
-            identify,
         }
     }
 }
