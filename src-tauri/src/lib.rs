@@ -5,10 +5,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildChannel, GuildId, UserId};
-use tauri::{AppHandle, Listener, State};
-use tokio::{runtime::Runtime, sync::{Mutex, RwLock}};
+use tauri::{AppHandle, State};
+use tokio::{
+    runtime::Runtime,
+    sync::{Mutex, RwLock},
+};
 use vc::{types::PubIdentify, vc_client::VC};
-use tracing::error;
 
 struct Storage {
     vc: Mutex<VC>,
@@ -20,7 +22,7 @@ struct MyConfig {
     speaker1_api: String,
     speaker2_api: String,
     listener_api: String,
-    user_volumes: HashMap<UserId,f32>
+    user_volumes: HashMap<UserId, f32>,
 }
 
 impl ::std::default::Default for MyConfig {
@@ -88,28 +90,21 @@ async fn leave(storage: State<'_, Storage>) -> Result<(), ()> {
     Ok(())
 }
 
-const ENV_PATH:&str = "./.env";
+const ENV_PATH: &str = "./.env";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let cfg = confy::load_path::<MyConfig>(ENV_PATH).unwrap();
-    let mut cfg_cpy = cfg.clone();
+    let cfg_cpy = cfg.clone();
     let pub_token = cfg.speaker1_api;
     let pub_token2 = cfg.speaker2_api;
     let sub_token = cfg.listener_api;
     let guild_id = cfg.guild_id;
     let user_volumes = cfg.user_volumes;
     let user_volumes = Arc::new(RwLock::new(user_volumes));
-    let mut vc = VC::new(guild_id,user_volumes.clone());
+    let mut vc = VC::new(guild_id, user_volumes.clone());
     let rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        vc.start_bot(
-            &pub_token,
-            &pub_token2,
-            &sub_token
-        )
-        .await
-    });
+    rt.block_on(async { vc.start_bot(&pub_token, &pub_token2, &sub_token).await });
 
     let app = tauri::Builder::default()
         // .plugin(tauri_plugin_updater::Builder::new().build())
@@ -124,7 +119,8 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
-    let exit_code = app.run_return(move |_app_handle, event| if let tauri::RunEvent::ExitRequested { api, .. } = event {
+    let exit_code = app.run_return(move |_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
             let rt = Runtime::new().unwrap();
             let user_volumes = user_volumes.clone();
             let mut cfg_cpy = cfg_cpy.clone();
@@ -135,6 +131,7 @@ pub fn run() {
                 confy::store_path(ENV_PATH, cfg_cpy).unwrap();
             });
             api.prevent_exit();
+        }
     });
     std::process::exit(exit_code);
 }

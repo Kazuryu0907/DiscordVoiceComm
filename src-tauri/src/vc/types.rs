@@ -2,9 +2,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId};
+use serenity::model::id::UserId;
 use songbird::model::id::UserId as VoiceUserId;
 use tokio::sync::RwLock;
-use serenity::model::id::UserId;
 #[derive(Clone, Copy, Debug)]
 pub struct JoinInfo {
     pub guild_id: GuildId,

@@ -1,14 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use serde::Serialize;
 use serenity::model::id::UserId;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 use crate::vc::types::VoiceUserEvent;
 
-use super::types::{PubIdentify, SendEnum, UserInfo, UserVolumesType, VoiceManagerReceiverType, VoiceSenderType};
+use super::types::{
+    PubIdentify, SendEnum, UserInfo, UserVolumesType, VoiceManagerReceiverType, VoiceSenderType,
+};
 use songbird::model::id::UserId as VoiceUserId;
 
 fn i16tof32(pcm_data: Vec<i16>) -> Vec<f32> {
