@@ -1,3 +1,4 @@
+use log::{error, info};
 use serenity::{
     all::{EventHandler, GatewayIntents, GuildChannel, GuildId, Ready},
     async_trait, Client,
@@ -15,7 +16,6 @@ use symphonia::{
     default::{codecs::PcmDecoder, register_enabled_codecs, register_enabled_formats},
 };
 use tokio::sync::RwLock;
-use tracing::{error, info};
 
 use crate::vc::types::JoinInfo;
 

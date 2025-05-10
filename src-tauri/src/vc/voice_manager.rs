@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
+use log::{debug, info};
 use serde::Serialize;
 use serenity::model::id::UserId;
 use tauri::{AppHandle, Emitter};
-use tracing::{debug, info};
 
 use crate::vc::types::VoiceUserEvent;
 

@@ -7,7 +7,7 @@ use std::{
 };
 
 use dashmap::DashMap;
-use tracing::{debug, error, info};
+use log::{debug, error, info};
 
 use serenity::{
     all::{ClientBuilder, Context, GuildId},

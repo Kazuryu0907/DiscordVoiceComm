@@ -3,12 +3,12 @@ use std::time::Duration;
 use crate::vc::dis_pub::Pub;
 use crate::vc::dis_sub::Sub;
 use crate::vc::types::JoinInfo;
+use log::error;
 use serenity::{
     all::{ChannelId, GuildId, UserId},
     futures::future::join_all,
 };
 use tauri::AppHandle;
-use tracing::error;
 
 use super::{
     types::{PubIdentify, UserVolumesType, VoiceChannelType},

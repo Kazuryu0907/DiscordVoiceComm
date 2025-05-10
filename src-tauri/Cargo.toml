@@ -24,12 +24,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serenity = { version = "0.12.4", features = ["client", "voice", "gateway", "standard_framework"] }
 songbird = { version = "0.5.0", features = ["driver", "receive", "gateway"] }
-tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread", "tracing"] }
 symphonia = { version = "0.5.4", features = ["pcm"] }
 dashmap = "6.1.0"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 confy = "0.6.1"
+log = "0.4.27"
+simple-logging = "2.0.2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
