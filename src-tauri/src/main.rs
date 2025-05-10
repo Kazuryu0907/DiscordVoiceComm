@@ -3,7 +3,6 @@
 
 use std::{fs::File, sync::Arc};
 
-use log::LevelFilter;
 use tracing::Level;
 fn main() {
     let fs = File::create("./logfile.log").unwrap();
