@@ -3,38 +3,17 @@ mod vc;
 
 use std::{collections::HashMap, sync::Arc};
 
-use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildChannel, GuildId, UserId};
 use tauri::{AppHandle, State};
 use tokio::{
     runtime::Runtime,
     sync::{Mutex, RwLock},
 };
-use vc::{types::PubIdentify, vc_client::VC};
+use vc::{config::ConfigManager, types::PubIdentify, vc_client::VC};
 
 struct Storage {
     vc: Mutex<VC>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct MyConfig {
-    guild_id: GuildId,
-    speaker1_api: String,
-    speaker2_api: String,
-    listener_api: String,
-    user_volumes: HashMap<UserId, f32>,
-}
-
-impl ::std::default::Default for MyConfig {
-    fn default() -> Self {
-        Self {
-            guild_id: GuildId::new(1),
-            speaker1_api: "API_HERE".to_owned(),
-            speaker2_api: "API_HERE".to_owned(),
-            listener_api: "API_HERE".to_owned(),
-            user_volumes: HashMap::new(),
-        }
-    }
+    config_manager: Mutex<ConfigManager>,
 }
 
 #[tauri::command]
@@ -50,8 +29,16 @@ async fn update_volume(
     volume: f32,
     storage: State<'_, Storage>,
 ) -> Result<(), String> {
-    let vc = storage.vc.lock().await;
-    vc.update_volume(user_id, volume).await;
+    {
+        let vc = storage.vc.lock().await;
+        vc.update_volume(user_id, volume).await;
+    }
+    {
+        let cfg_manager = storage.config_manager.lock().await;
+        if let Err(e) = cfg_manager.update_volume(user_id, volume) {
+            return Err("Config write error".to_string());
+        }
+    }
     Ok(())
 }
 #[tauri::command(rename_all = "snake_case")]
@@ -94,8 +81,8 @@ const ENV_PATH: &str = "./.env";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let cfg = confy::load_path::<MyConfig>(ENV_PATH).unwrap();
-    let cfg_cpy = cfg.clone();
+    let cfg_manager = ConfigManager::new(ENV_PATH.to_string());
+    let cfg = cfg_manager.get_cfg();
     let pub_token = cfg.speaker1_api;
     let pub_token2 = cfg.speaker2_api;
     let sub_token = cfg.listener_api;
@@ -106,9 +93,11 @@ pub fn run() {
     let rt = Runtime::new().unwrap();
     rt.block_on(async { vc.start_bot(&pub_token, &pub_token2, &sub_token).await });
 
-    let app = tauri::Builder::default()
-        // .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(Storage { vc: Mutex::new(vc) })
+    tauri::Builder::default()
+        .manage(Storage {
+            vc: Mutex::new(vc),
+            config_manager: Mutex::new(cfg_manager),
+        })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             join,
@@ -117,21 +106,6 @@ pub fn run() {
             update_volume,
             update_is_listening
         ])
-        .build(tauri::generate_context!())
+        .run(tauri::generate_context!())
         .expect("error while running tauri application");
-    let exit_code = app.run_return(move |_app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { api, .. } = event {
-            let rt = Runtime::new().unwrap();
-            let user_volumes = user_volumes.clone();
-            let mut cfg_cpy = cfg_cpy.clone();
-            rt.block_on(async move {
-                let user_volumes_lock = user_volumes;
-                let user_volumes = user_volumes_lock.read().await;
-                cfg_cpy.user_volumes = user_volumes.clone();
-                confy::store_path(ENV_PATH, cfg_cpy).unwrap();
-            });
-            api.prevent_exit();
-        }
-    });
-    std::process::exit(exit_code);
 }
