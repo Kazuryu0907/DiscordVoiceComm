@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, LazyLock, Mutex},
-};
+use std::{collections::HashMap, sync::Mutex};
 
 use confy::ConfyError;
 use serde::{Deserialize, Serialize};

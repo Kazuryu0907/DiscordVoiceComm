@@ -1,9 +1,9 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod vc;
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use serenity::all::{ChannelId, GuildChannel, GuildId, UserId};
+use serenity::all::{ChannelId, GuildChannel, UserId};
 use tauri::{AppHandle, State};
 use tokio::{
     runtime::Runtime,
@@ -35,7 +35,7 @@ async fn update_volume(
     }
     {
         let cfg_manager = storage.config_manager.lock().await;
-        if let Err(e) = cfg_manager.update_volume(user_id, volume) {
+        if let Err(_e) = cfg_manager.update_volume(user_id, volume) {
             return Err("Config write error".to_string());
         }
     }
