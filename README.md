@@ -1,6 +1,6 @@
 # DiscordVoiceComm
 Rust製のDiscord用VC聞き専ソフトウェア
-
+![Image](https://github.com/user-attachments/assets/81887e81-7f30-4024-ac26-e3dd8d9a25bc)
 # Introduction
 DiscordVoiceCommはゲームの大会運営で使用することを目的とした，実況VCから選手の各VCを一方的に聞けるソフトウェアです
 Rust + Tauri製なので軽量で高速です．
