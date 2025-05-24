@@ -40,7 +40,7 @@ impl Sub {
     pub fn new() -> Self {
         Self {}
     }
-    pub async fn create_client(&self, token: &str) -> Client {
+    pub async fn create_client(&self, token: &str) -> Result<Client, serenity::Error> {
         let intents = GatewayIntents::non_privileged()
             | GatewayIntents::MESSAGE_CONTENT
             // Channelsに必要
@@ -50,7 +50,6 @@ impl Sub {
             .event_handler(Handler)
             .register_songbird()
             .await
-            .expect("error creating sub client")
     }
     pub async fn join(&self, join_info: JoinInfo, mut rx: VoiceReceiverType) {
         let ctx = CTX.get();

@@ -258,18 +258,17 @@ impl Pub {
             identify,
         }
     }
-    pub async fn create_client(&mut self, token: &str) -> Client {
+    pub async fn create_client(&mut self, token: &str) -> Result<Client, serenity::Error> {
         let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
         let songbird_config = Config::default().decode_mode(DecodeMode::Decode);
 
         let client = ClientBuilder::new(token, intents)
             .event_handler(Handler)
             .register_songbird_from_config(songbird_config)
-            .await
-            .expect("Err creating client");
-        let user_name = client.http.get_current_user().await.unwrap().name.clone();
+            .await?;
+        let user_name = client.http.get_current_user().await?.name.clone();
         self.user_name = user_name;
-        client
+        Ok(client)
     }
     pub async fn join(&self, join_info: JoinInfo, tx: VoiceManagerSenderType) {
         info!("info:{:?}", join_info);
