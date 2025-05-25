@@ -95,16 +95,16 @@ pub fn run() {
     rt.block_on(async { vc.start_bot(&pub_token, &pub_token2, &sub_token).await });
 
     tauri::Builder::default()
-        .manage(Storage {
-            vc: Mutex::new(vc),
-            config_manager: Mutex::new(cfg_manager),
-        })
         .setup(|app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 update(handle).await.unwrap();
             });
             Ok(())
+        })
+        .manage(Storage {
+            vc: Mutex::new(vc),
+            config_manager: Mutex::new(cfg_manager),
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
