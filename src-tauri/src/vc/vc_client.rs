@@ -36,9 +36,9 @@ impl VC {
     }
     pub async fn start_bot(&mut self, pub_token: &str, pub_token2: &str, sub_token: &str) {
         // spawn clients
-        let mut client_sub = self.dis_sub.create_client(sub_token).await;
-        let mut client_pub = self.dis_pub.create_client(pub_token).await;
-        let mut client_pub2 = self.dis_pub2.create_client(pub_token2).await;
+        let mut client_sub = self.dis_sub.create_client(sub_token).await.expect("sub token error!");
+        let mut client_pub = self.dis_pub.create_client(pub_token).await.expect("pub token error!");
+        let mut client_pub2 = self.dis_pub2.create_client(pub_token2).await.expect("pub2 token error!");
         self.token = Some(pub_token.to_owned());
 
         tokio::spawn(async move {
