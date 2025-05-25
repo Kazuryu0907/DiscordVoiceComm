@@ -1,11 +1,11 @@
 {
-    "version": "v0.2.0",
+    "version": "v0.3.0",
     "notes": "updater test",
-    "pub_date": "2025-05-24T22:44:13.033Z",
+    "pub_date": "2025-05-24T23:44:13.033Z",
     "platforms": {
         "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRMjRReGZEaHU0QnJibHRnUElYMjZKWk1PcnJqRUZBdkR0OXpZZitRUjRDeVZ4TndJNG0xY3ZWOUZ4aDIrRTN5WTNrenh2TjY3UXFubDFRZzhGZjhOYXp4ZitoU0RsK3dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzQ4MTI1OTg5CWZpbGU6ZGlzY29yZHZvaWNlY29tbV8wLjIuMF94NjQtc2V0dXAuZXhlCnVYN0VvRVdoTnA2UGVSZG0zZUord2pDb2lqR3ZtVS9nTHEyWGFQNndTemJaNExQWkkvRUpETEcwN0tyVk9vTXZIZEUzTEZGWjdXU2x1TURiMTc2RUN3PT0K",
-            "url": "https://github.com/Kazuryu0907/DiscordVoiceComm/releases/download/v.0.2.0-beta/discordvoicecomm_0.2.0_x64-setup.exe"
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRMjRReGZEaHU0QmdtVE9nRFc3MGpNSXZpZVFwVndhOW91V0lZc0NGNFE0d0U0Y1ZXR2VOdWdJOWlDWGJRY1ZNelhKMkxXYkdnV0M2ZzdBbW1jQmtZWjhCK01TYVdTOFFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzQ4MTI5OTA4CWZpbGU6ZGlzY29yZHZvaWNlY29tbV8wLjMuMF94NjQtc2V0dXAuZXhlCkxWMXhkSGtEeEk0dDB0bWR2azNNZWlpcTJRYVl3R2gvcDlnVXBZZFFPaXdOSzdoUkhscnlkUi9BOGdLeENGbk84ZUQ1UmRSNElTOHdxSVQ3VGxZTERnPT0K",
+            "url": "https://github.com/Kazuryu0907/DiscordVoiceComm/releases/download/v0.3.0-beta/discordvoicecomm_0.3.0_x64-setup.exe"
         }
     }
 }
