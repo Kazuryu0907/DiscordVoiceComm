@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { PlayIcon, PauseIcon } from "lucide-react";
 import { debounce } from "lodash";
+import {getVersion} from "@tauri-apps/api/app";
 
 type VcType = { id: string; name: string };
 
@@ -173,6 +174,7 @@ function App() {
   const [channelId2, setChannelId2] = useState<string>("");
   const [subChannelId, setSubChannelId] = useState<string>("");
   const [usersUpdater,setUsersUpdater] = useState<boolean>(false);
+  const [version,setVersion] = useState<string>("");
 
   useEffect(() => {
     const fn = async () => {
@@ -182,6 +184,7 @@ function App() {
       setChannelId(voice_channels[0].id);
       setChannelId2(voice_channels[0].id);
       setSubChannelId(voice_channels[0].id);
+      getVersion().then(setVersion);
     };
     fn();
   }, []);
@@ -199,7 +202,7 @@ function App() {
   };
   return (
     <main className="text-center">
-      <h1 className="text-3xl font-black my-2">Welcome to DiscordVoiceComm</h1>
+      <h1 className="text-3xl font-black my-2">Welcome to DiscordVoiceComm v{version}</h1>
       <div className="mt-5 mx-auto font-bold text-lg">
         <p>Listener</p>
         <LabelSelect setChannelId={setSubChannelId} vcs={vcs} />
