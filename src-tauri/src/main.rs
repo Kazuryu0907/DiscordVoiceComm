@@ -9,11 +9,13 @@ fn main() {
     let fs = File::create("./logfile.log").unwrap();
     tracing_subscriber::fmt()
         .with_max_level(Level::ERROR)
-        // .with_ansi(false)
-        // .with_writer(Arc::new(fs))
+        .with_ansi(false)
+        .with_writer(Arc::new(fs))
         .init();
     // simple_logging::log_to_file("./logfile.log", LevelFilter::Debug).unwrap();
-    let fs_std = File::create("./std.log").unwrap();
-    // let _redirect = Redirect::stderr(fs_std).expect("Failed to redirect stdout");
+    let fs_stderr = File::create("./stderr.log").unwrap();
+    let _redirect = Redirect::stderr(fs_stderr).expect("Failed to redirect stderr");
+    let fs_stdout = File::create("./stdout.log").unwrap();
+    let _redirect2 = Redirect::stdout(fs_stdout).expect("Failed to redirect stdout");
     discordvoicecommv1_lib::run()
 }
