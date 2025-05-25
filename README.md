@@ -17,8 +17,8 @@ Rust + Tauriでできているので軽量で高速です．
 ## 1. Discord Botの用意
 [このページ](https://discordpy.readthedocs.io/ja/stable/discord.html)を参考に，Discord Botを3体作成しましょう．  
 **Tokenもこの時メモしておきます．**  
-各Botの`Server Members Intent`をONにしておきます．  
-![Image](https://github.com/user-attachments/assets/59cb3fe4-ea66-4d01-b5c4-3beea5bfc935)
+各Botの`Server Members Intent`と`Message Content Intent`をONにしておきます．  
+![Image](https://github.com/user-attachments/assets/ec1120b9-4ff2-442f-bdd5-de413c807097)
 
 ## 2. Configファイルを設定
 Configファイルである`.env`ファイルには以下の設定事項があります．  
