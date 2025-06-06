@@ -3,7 +3,11 @@ name: "publish"
 on:
   push:
     branches:
-      - release
+      - "main"
+    paths-ignore: 
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
 
 # This is the example from the readme.
 # On each push to the `release` branch it will create or update a GitHub release, build your app, and upload the artifacts to the release.
@@ -37,6 +41,9 @@ jobs:
       - name: install frontend dependencies
         run: bun install # change this to npm, pnpm or bun depending on which one you use.
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

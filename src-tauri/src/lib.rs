@@ -4,12 +4,11 @@ mod vc;
 use std::sync::Arc;
 
 use serenity::all::{ChannelId, GuildChannel, UserId};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
-use tokio::{
-    runtime::Runtime,
-    sync::{Mutex, RwLock},
-};
+use tokio::sync::{Mutex, RwLock};
 use vc::{config::ConfigManager, types::PubIdentify, vc_client::VC};
 
 struct Storage {
@@ -91,23 +90,48 @@ pub fn run() {
     let user_volumes = cfg.user_volumes;
     let user_volumes = Arc::new(RwLock::new(user_volumes));
     let mut vc = VC::new(guild_id, user_volumes.clone());
-    let rt = Runtime::new().unwrap();
-    rt.block_on(async { vc.start_bot(&pub_token, &pub_token2, &sub_token).await });
 
     tauri::Builder::default()
-        .setup(|app| {
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(move |app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 update(handle).await.unwrap();
             });
+            let res = tauri::async_runtime::block_on(async {
+                vc.start_bot(&pub_token, &pub_token2, &sub_token).await
+            });
+
+            // Stateの登録
+            app.manage(Storage {
+                vc: Mutex::new(vc),
+                config_manager: Mutex::new(cfg_manager),
+            });
+            // API関連でエラーが発生した場合
+            if let Err(e) = res {
+                // Explorer表示
+                eprintln!("Error starting bot: {}", e);
+                let shell = app.handle().shell();
+                let pwd = std::env::current_dir().unwrap();
+                let exp_shell = shell
+                    .command("explorer.exe")
+                    .arg(pwd);
+                // Dialog表示
+                let res = app.dialog()
+                    .message("API認証エラー！\n .envファイルを再確認してください")
+                    .kind(MessageDialogKind::Error)
+                    .title("DiscordBot API認証エラー")
+                    .blocking_show();
+                if res {
+                    exp_shell.spawn().expect("failed to shell");
+                }
+                return Err("failed to start bot".to_string().into());
+            }
             Ok(())
         })
-        .manage(Storage {
-            vc: Mutex::new(vc),
-            config_manager: Mutex::new(cfg_manager),
-        })
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             join,
             leave,

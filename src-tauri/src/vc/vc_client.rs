@@ -34,28 +34,45 @@ impl VC {
             token: None,
         }
     }
-    pub async fn start_bot(&mut self, pub_token: &str, pub_token2: &str, sub_token: &str) {
+    pub async fn start_bot(
+        &mut self,
+        pub_token: &str,
+        pub_token2: &str,
+        sub_token: &str,
+    ) -> Result<(), String> {
         // spawn clients
-        let mut client_sub = self.dis_sub.create_client(sub_token).await.expect("sub token error!");
-        let mut client_pub = self.dis_pub.create_client(pub_token).await.expect("pub token error!");
-        let mut client_pub2 = self.dis_pub2.create_client(pub_token2).await.expect("pub2 token error!");
+        // APIで落ちる場合はここでエラーになる
+
+        let mut client_sub = match self.dis_sub.create_client(sub_token).await {
+            Ok(client) => client,
+            Err(why) => return Err(format!("sub token error: {:?}", why)),
+        };
+        let mut client_pub = match self.dis_pub.create_client(pub_token).await {
+            Ok(client) => client,
+            Err(why) => return Err(format!("pub token error: {:?}", why)),
+        };
+        let mut client_pub2 = match self.dis_pub2.create_client(pub_token2).await {
+            Ok(client) => client,
+            Err(why) => return Err(format!("pub2 token error: {:?}", why)),
+        };
         self.token = Some(pub_token.to_owned());
 
         tokio::spawn(async move {
             if let Err(why) = client_pub.start().await {
-                error!("Err with pub client: {:?}", why);
+                error!("Err with pub client channle: {:?}", why);
             }
         });
         tokio::spawn(async move {
             if let Err(why) = client_pub2.start().await {
-                error!("Err with pub2 client: {:?}", why);
+                error!("Err with pub2 client channel: {:?}", why);
             }
         });
         tokio::spawn(async move {
             if let Err(why) = client_sub.start().await {
-                error!("Err with sub client: {:?}", why);
+                error!("Err with sub client channel: {:?}", why);
             }
         });
+        Ok(())
     }
     pub async fn join(
         &self,
