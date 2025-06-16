@@ -33,17 +33,28 @@ pub struct ConfigManager {
 }
 impl ConfigManager {
     pub fn new(path: String) -> Self {
+        let cfg = confy::load_path::<MyConfig>(&path)
+            .unwrap_or_else(|e| {
+                eprintln!("Warning: Could not load config from {}: {}. Using default config.", path, e);
+                MyConfig::default()
+            });
         ConfigManager {
             path: path.clone(),
-            cfg: Mutex::new(confy::load_path::<MyConfig>(path).unwrap()),
+            cfg: Mutex::new(cfg),
         }
     }
     pub fn get_cfg(&self) -> MyConfig {
-        let cfg = self.cfg.lock().unwrap();
+        let cfg = self.cfg.lock().unwrap_or_else(|poisoned| {
+            eprintln!("Warning: Config mutex was poisoned, recovering...");
+            poisoned.into_inner()
+        });
         cfg.clone()
     }
     pub fn update_volume(&self, user_id: UserId, volume: f32) -> Result<(), ConfyError> {
-        let mut cfg = self.cfg.lock().unwrap();
+        let mut cfg = self.cfg.lock().unwrap_or_else(|poisoned| {
+            eprintln!("Warning: Config mutex was poisoned during volume update, recovering...");
+            poisoned.into_inner()
+        });
         cfg.user_volumes.insert(user_id, volume);
         let cfg_cpy = cfg.clone();
         confy::store_path(&self.path, cfg_cpy)

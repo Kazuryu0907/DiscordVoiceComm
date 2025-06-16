@@ -32,7 +32,9 @@ struct Handler;
 impl EventHandler for Handler {
     async fn ready(&self, ctx: serenity::prelude::Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
-        CTX.set(Arc::new(RwLock::new(ctx))).unwrap();
+        if let Err(_) = CTX.set(Arc::new(RwLock::new(ctx))) {
+            error!("CTX already initialized");
+        }
     }
 }
 
@@ -78,7 +80,7 @@ impl Sub {
             let handler_lock = handler_lock.clone();
             tokio::spawn(async move {
                 while let Some(d) = rx.recv().await {
-                    println!("+len:{}", rx.len());
+                    // Removed debug print for performance in hot path
                     let pcm = d;
                     let adapter = RawAdapter::new(Cursor::new(pcm), 48000, 2);
                     let input = Input::from(adapter);
@@ -116,8 +118,10 @@ impl Sub {
             Some(ctx) => ctx.clone(),
         };
         let ctx = ctx_lock.read().await;
-        let guild = ctx.http.get_guild(guild_id).await.unwrap();
-        let channels = guild.channels(ctx.http.clone()).await.unwrap();
+        let guild = ctx.http.get_guild(guild_id).await
+            .map_err(|e| format!("Failed to get guild: {}", e))?;
+        let channels = guild.channels(ctx.http.clone()).await
+            .map_err(|e| format!("Failed to get channels: {}", e))?;
         let voice_channels: Vec<GuildChannel> = channels
             .values()
             .filter(|channel| channel.bitrate.is_some())
