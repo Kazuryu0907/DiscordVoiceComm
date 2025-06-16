@@ -87,12 +87,19 @@ impl VoiceManager {
                         let user_name = match id_name_map.get(&user_id) {
                             Some(user_name) => user_name.to_owned(),
                             None => {
-                                let user = http.get_user(user_id).await.unwrap();
-                                user.name
+                                match http.get_user(user_id).await {
+                                    Ok(user) => user.name,
+                                    Err(e) => {
+                                        log::error!("Failed to get user {}: {}", user_id, e);
+                                        continue; // Skip this user and continue processing
+                                    }
+                                }
                             }
                         };
                         let emit_data = EmitData::new(user_info, user_name.clone());
-                        app.emit("user-data-changed", emit_data).unwrap();
+                        if let Err(e) = app.emit("user-data-changed", emit_data) {
+                            log::error!("Failed to emit user data: {}", e);
+                        }
                         {
                             let user_lock = user_volumes.read().await;
                             let need_insert = user_lock.get(&user_id).is_none();
@@ -117,11 +124,15 @@ impl VoiceManager {
                         let volume = match user_volumes.get(&UserId::from(u.user_id.0)) {
                             Some(v) => *v,
                             None => {
-                                unreachable!()
+                                log::warn!("No volume setting for user {}, using default 1.0", u.user_id.0);
+                                1.0
                             }
                         };
                         let pcm = convert_voice_data(u.voice_data, volume);
-                        tx.send(pcm).await.unwrap();
+                        if let Err(e) = tx.send(pcm).await {
+                            log::error!("Failed to send PCM data: {}", e);
+                            break; // Channel is closed, exit the processing loop
+                        }
                     }
                 }
             }
