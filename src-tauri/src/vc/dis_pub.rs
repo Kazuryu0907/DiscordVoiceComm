@@ -112,10 +112,7 @@ impl VoiceEventHandler for Receiver {
                 // SSRCs and map the SSRC to the User ID and maintain this state.
                 // Using this map, you can map the `ssrc` in `voice_packet`
                 // to the user ID and handle their audio packets separately.
-                debug!(
-                    "Speaking state update: user {:?} has SSRC {:?}, using {:?}",
-                    user_id, ssrc, speaking,
-                );
+                // Removed debug print for performance in voice processing hot path
 
                 if let Some(user) = user_id {
                     self.inner.known_ssrcs.insert(*ssrc, *user);
@@ -135,7 +132,7 @@ impl VoiceEventHandler for Receiver {
                 let last_tick_was_empty = self.inner.last_tick_was_empty.load(Ordering::SeqCst);
 
                 if speaking == 0 && !last_tick_was_empty {
-                    debug!("No speakers");
+                    // Removed debug print for performance
 
                     self.inner.last_tick_was_empty.store(true, Ordering::SeqCst);
                 } else if speaking != 0 {
@@ -238,7 +235,7 @@ impl VoiceEventHandler for Receiver {
                 if let Err(e) = self.tx.send(SendEnum::UserData(user_data)).await {
                     error!("Failed to send user leave data: {}", e);
                 }
-                debug!("Client disconnected: user {:?}", user_id);
+                // User disconnect logged at info level when needed
             }
             _ => {
                 // We won't be registering this struct for any more event classes.
@@ -297,7 +294,7 @@ impl Pub {
     }
     async fn get_ctx(&self) -> Option<Context> {
         let ctx_hash_map = CTXS.read().await;
-        debug!("ctx key:{}", self.user_name);
+        // Removed debug print for performance
         let ctx = ctx_hash_map.get(&self.user_name);
         // ctx.map(|ctx| ctx.cloned())
         ctx.cloned()

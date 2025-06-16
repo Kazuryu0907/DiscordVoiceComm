@@ -80,7 +80,7 @@ impl Sub {
             let handler_lock = handler_lock.clone();
             tokio::spawn(async move {
                 while let Some(d) = rx.recv().await {
-                    println!("+len:{}", rx.len());
+                    // Removed debug print for performance in hot path
                     let pcm = d;
                     let adapter = RawAdapter::new(Cursor::new(pcm), 48000, 2);
                     let input = Input::from(adapter);
