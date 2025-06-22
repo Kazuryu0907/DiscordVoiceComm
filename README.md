@@ -1,12 +1,20 @@
-# DiscordVoiceComm
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](#)
-[![Rust](https://img.shields.io/badge/Rust-%23000000.svg?e&logo=rust&logoColor=white)](#)
-[![Tauri](https://img.shields.io/badge/Tauri-%2324C8D8.svg?logo=tauri&logoColor=white)]()
-[![Twitter badge][]][Twitter link]
+<div align="center">
+    <img src="https://github.com/user-attachments/assets/0ae6d95e-108b-45d4-be2f-bac19ead2e0b" alt="dvc logo" width="256">
+    <h1>DiscordVoiceComm</h1>
+</div>
+<p align="center">
+  <a href="#"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Rust-%23000000.svg?e&logo=rust&logoColor=white" alt="Rust"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Tauri-%2324C8D8.svg?logo=tauri&logoColor=white" alt="Tauri"></a>
+  <a href="https://twitter.com/intent/follow?screen_name=kazuryu_rl"><img src="https://img.shields.io/twitter/url?label=kazuryu_rl&style=social&url=https%3A%2F%2Ftwitter.com%2Fkazuryu_rl" alt="Twitter"></a>
+</p>
 
-**DiscordVoiceComm**はゲームの大会運営で使用することを目的とした，実況VCから選手の各VCを一方的に聞けるソフトウェアです
+<div align="center">
+    <img src="https://github.com/user-attachments/assets/81887e81-7f30-4024-ac26-e3dd8d9a25bc">
+</div>
+
+> **DiscordVoiceComm**はゲームの大会運営で使用することを目的とした，実況VCから選手の各VCを一方的に聞けるソフトウェアです
 Rust + Tauriでできているので軽量で高速です．
-![Image](https://github.com/user-attachments/assets/81887e81-7f30-4024-ac26-e3dd8d9a25bc)
 
 
 # Features
