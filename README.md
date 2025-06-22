@@ -42,6 +42,6 @@ DiscordのサーバーIDは[公式サイト](https://support.discord.com/hc/ja/a
 
 `TOKEN_HERE`を各Token文字列に置き換えます．
 
-
-[Twitter badge]: https://img.shields.io/twitter/url?label=kazuryu_rl&style=social&url=https%3A%2F%2Ftwitter.com%2Fkazuryu_rl
-[Twitter link]: https://twitter.com/intent/follow?screen_name=kazuryu_rl
+<div align="center">
+    <a href="https://coff.ee/kazuryu"><img src="https://github.com/user-attachments/assets/848b09c7-2398-456d-9768-950b6f522639" width="256"></a>
+</div>
