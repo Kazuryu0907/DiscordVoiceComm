@@ -30,7 +30,7 @@ fn convert_voice_data(data: &[i16], volume: f32, f32_buffer: &mut Vec<f32>, outp
     output.reserve(f32_buffer.len() * 4); // f32 = 4 bytes
     
     // Apply volume and convert to bytes efficiently
-    for &sample in f32_buffer {
+    for &sample in f32_buffer.iter() {
         let adjusted_sample = sample * volume;
         output.extend_from_slice(&adjusted_sample.to_le_bytes());
     }
@@ -91,10 +91,9 @@ impl VoiceManager {
             let (user_lookup_tx, mut user_lookup_rx) = tokio::sync::mpsc::unbounded_channel::<(UserId, tokio::sync::oneshot::Sender<Option<String>>)>();
             
             // Spawn background task for user lookups
-            let http_clone = http.clone();
             tokio::spawn(async move {
                 while let Some((user_id, response_tx)) = user_lookup_rx.recv().await {
-                    let user_name = match http_clone.get_user(user_id).await {
+                    let user_name = match http.get_user(user_id).await {
                         Ok(user) => Some(user.name),
                         Err(e) => {
                             log::error!("Failed to lookup user {}: {}", user_id, e);
