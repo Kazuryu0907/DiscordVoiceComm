@@ -81,8 +81,28 @@ impl VC {
         pub_info2: ChannelId,
         sub_info: ChannelId,
     ) {
-        let (manager_tx, manager_rx) = tokio::sync::mpsc::channel::<VoiceChannelType>(16);
-        let (vc_tx, vc_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+        // Optimized channel sizing with backpressure monitoring
+        let (manager_tx, manager_rx) = tokio::sync::mpsc::channel::<VoiceChannelType>(32); // Increased for better buffering
+        let (vc_tx, vc_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(128); // Reduced to prevent memory buildup
+        
+        // Create monitoring channels for backpressure detection
+        let (backpressure_tx, mut backpressure_rx) = tokio::sync::mpsc::channel::<()>(1);
+        
+        // Spawn backpressure monitoring task
+        let vc_tx_monitor = vc_tx.clone();
+        tokio::spawn(async move {
+            let mut last_warning = std::time::Instant::now();
+            while backpressure_rx.recv().await.is_some() {
+                // Check channel capacity and warn if getting full
+                if vc_tx_monitor.capacity() == 0 {
+                    let now = std::time::Instant::now();
+                    if now.duration_since(last_warning) > std::time::Duration::from_secs(5) {
+                        log::warn!("Voice channel at capacity - potential audio lag");
+                        last_warning = now;
+                    }
+                }
+            }
+        });
         if self.token.is_none() {
             return;
         }
@@ -105,7 +125,7 @@ impl VC {
             ),
         ];
         join_all(futures).await;
-        self.voice_manager.start(app, token, manager_rx, vc_tx);
+        self.voice_manager.start(app, token, manager_rx, vc_tx, backpressure_tx);
         self.dis_sub
             .join(
                 JoinInfo {
