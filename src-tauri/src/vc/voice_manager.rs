@@ -1,9 +1,13 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use log::{debug, info};
+use lru::LruCache;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use serenity::model::id::UserId;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::Mutex;
 
 use crate::vc::types::VoiceUserEvent;
 
@@ -12,20 +16,68 @@ use super::types::{
 };
 use songbird::model::id::UserId as VoiceUserId;
 
-fn i16tof32(pcm_data: Vec<i16>) -> Vec<f32> {
-    pcm_data
-        .iter()
-        .map(|sample| (*sample as f32) / 32768.0)
-        .collect()
+// バッファプール: 音声データ用の再利用可能バッファ
+struct BufferPool {
+    buffers: Vec<Vec<u8>>,
 }
+
+impl BufferPool {
+    fn new() -> Self {
+        Self {
+            buffers: Vec::with_capacity(64), // 初期容量
+        }
+    }
+
+    fn get_buffer(&mut self, min_capacity: usize) -> Vec<u8> {
+        // 適切なサイズのバッファを探す
+        if let Some(pos) = self.buffers.iter().position(|buf| buf.capacity() >= min_capacity) {
+            let mut buffer = self.buffers.swap_remove(pos);
+            buffer.clear(); // データをクリアするが容量は保持
+            buffer
+        } else {
+            // 適切なバッファがない場合は新規作成
+            Vec::with_capacity(min_capacity.max(1024)) // 最小1KB確保
+        }
+    }
+
+    fn return_buffer(&mut self, buffer: Vec<u8>) {
+        if buffer.capacity() > 0 && self.buffers.len() < 128 { // 最大128個まで保持
+            self.buffers.push(buffer);
+        }
+    }
+}
+
+// グローバルバッファプール
+static BUFFER_POOL: Lazy<Arc<Mutex<BufferPool>>> = Lazy::new(|| Arc::new(Mutex::new(BufferPool::new())));
+
+// ユーザー名キャッシュ: LRU実装
+static USER_NAME_CACHE: Lazy<Arc<Mutex<LruCache<UserId, String>>>> = 
+    Lazy::new(|| Arc::new(Mutex::new(LruCache::new(std::num::NonZeroUsize::new(1000).unwrap()))));
+
 // Vec<i16>のpcmデータからpcm f32用のVec<u8>の音声データを作成
-fn convert_voice_data(data: Vec<i16>, volume: f32) -> Vec<u8> {
-    let raw = i16tof32(data);
-    let bytes: Vec<u8> = raw
-        .iter()
-        .flat_map(|&sample| (sample * volume).to_le_bytes().to_vec())
-        .collect();
+// 最適化: バッファプール使用 + 単一パスでi16→f32→u8変換
+async fn convert_voice_data(data: Vec<i16>, volume: f32) -> Vec<u8> {
+    let required_capacity = data.len() * 4; // f32 = 4 bytes
+    
+    // バッファプールから再利用可能なバッファを取得
+    let mut bytes = {
+        let mut pool = BUFFER_POOL.lock().await;
+        pool.get_buffer(required_capacity)
+    };
+    
+    for sample in data {
+        // i16→f32変換と音量調整を同時に実行
+        let f32_sample = (sample as f32 / 32768.0) * volume;
+        bytes.extend_from_slice(&f32_sample.to_le_bytes());
+    }
+    
     bytes
+}
+
+// バッファをプールに返却するヘルパー関数
+async fn return_buffer_to_pool(buffer: Vec<u8>) {
+    let mut pool = BUFFER_POOL.lock().await;
+    pool.return_buffer(buffer);
 }
 
 #[derive(Serialize, Clone)]
@@ -76,7 +128,6 @@ impl VoiceManager {
         let user_volumes = self.user_volumes.clone();
         tokio::spawn(async move {
             let http = serenity::http::Http::new(&token);
-            let id_name_map: HashMap<UserId, String> = HashMap::new();
             while let Some(d) = rx.recv().await {
                 match d {
                     SendEnum::UserData(user_info) => {
@@ -84,24 +135,39 @@ impl VoiceManager {
                         // 一定時間で再Hitする可能性はある
                         debug!("create user_id from {:?}", user_info.user_id);
                         let user_id = UserId::new(user_info.user_id.0);
-                        let user_name = match id_name_map.get(&user_id) {
-                            Some(user_name) => user_name.to_owned(),
-                            None => {
-                                let user = http.get_user(user_id).await.unwrap();
-                                user.name
+                        
+                        // 最適化: LRUキャッシュからユーザー名を取得
+                        let user_name = {
+                            let mut cache = USER_NAME_CACHE.lock().await;
+                            if let Some(cached_name) = cache.get(&user_id) {
+                                cached_name.clone()
+                            } else {
+                                // キャッシュにない場合のみHTTP APIを呼び出し
+                                drop(cache); // lockを早期解放
+                                match http.get_user(user_id).await {
+                                    Ok(user) => {
+                                        let name = user.name.clone();
+                                        // キャッシュに保存
+                                        let mut cache = USER_NAME_CACHE.lock().await;
+                                        cache.put(user_id, name.clone());
+                                        name
+                                    }
+                                    Err(e) => {
+                                        debug!("Failed to get user name for {}: {:?}", user_id, e);
+                                        format!("User#{}", user_id.get())
+                                    }
+                                }
                             }
                         };
                         let emit_data = EmitData::new(user_info, user_name.clone());
                         app.emit("user-data-changed", emit_data).unwrap();
+                        // 最適化: entry APIを使用して二重ロックを回避
                         {
-                            let user_lock = user_volumes.read().await;
-                            let need_insert = user_lock.get(&user_id).is_none();
-                            drop(user_lock);
-                            if need_insert {
-                                let mut user_write = user_volumes.write().await;
-                                user_write.insert(user_id.to_owned(), 1.);
-                                info!("volume set {} to {}", user_name, 1.);
-                            }
+                            let mut user_write = user_volumes.write().await;
+                            user_write.entry(user_id).or_insert_with(|| {
+                                info!("volume set {} to {}", user_name, 1.0);
+                                1.0
+                            });
                         }
                         // let user_id = UserId::new(user_info.user_id.0);
                         // let user = http.get_user(user_id).await;
@@ -120,7 +186,7 @@ impl VoiceManager {
                                 unreachable!()
                             }
                         };
-                        let pcm = convert_voice_data(u.voice_data, volume);
+                        let pcm = convert_voice_data(u.voice_data, volume).await;
                         tx.send(pcm).await.unwrap();
                     }
                 }

@@ -40,7 +40,7 @@ use super::types::PubIdentify;
 // ! idにしたほうが確実
 static CTXS: LazyLock<Arc<RwLock<HashMap<String, serenity::prelude::Context>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
-static ISLISTENING: LazyLock<Arc<RwLock<HashMap<String, bool>>>> =
+static ISLISTENING: LazyLock<Arc<RwLock<HashMap<String, Arc<AtomicBool>>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 struct Handler;
 
@@ -55,7 +55,7 @@ impl EventHandler for Handler {
         }
         {
             let mut is_listening = ISLISTENING.write().await;
-            is_listening.insert(key.to_owned(), false);
+            is_listening.insert(key.to_owned(), Arc::new(AtomicBool::new(false)));
         }
     }
 }
@@ -167,10 +167,10 @@ impl VoiceEventHandler for Receiver {
                             let send_data = VoiceType::new(user_id, pcm);
                             let is_listening = {
                                 let map = ISLISTENING.read().await;
-                                let is_listening = map.get(&self.user_name);
-                                match is_listening {
+                                let atomic_bool = map.get(&self.user_name);
+                                match atomic_bool {
                                     None => false,
-                                    Some(l) => *l,
+                                    Some(atomic) => atomic.load(Ordering::Relaxed),
                                 }
                             };
                             if is_listening {
@@ -288,8 +288,15 @@ impl Pub {
         self._join_vc(manager, join_info).await;
     }
     pub async fn set_is_listening(&self, is_listening: bool) {
-        let mut is_listening_writer = ISLISTENING.write().await;
-        is_listening_writer.insert(self.user_name.clone(), is_listening);
+        let map = ISLISTENING.read().await;
+        if let Some(atomic_bool) = map.get(&self.user_name) {
+            atomic_bool.store(is_listening, Ordering::Relaxed);
+        } else {
+            // 初回設定時のみwrite lockを取得
+            drop(map);
+            let mut is_listening_writer = ISLISTENING.write().await;
+            is_listening_writer.insert(self.user_name.clone(), Arc::new(AtomicBool::new(is_listening)));
+        }
     }
     async fn get_ctx(&self) -> Option<Context> {
         let ctx_hash_map = CTXS.read().await;
