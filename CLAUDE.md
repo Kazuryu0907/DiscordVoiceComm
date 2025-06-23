@@ -66,9 +66,28 @@ listener_api=BOT_TOKEN_3
 - **自動アップデート**: tauri-plugin-updaterによる自動更新機能
 - **エラーハンドリング**: API認証エラー時のダイアログ表示
 
+## パフォーマンス計測
+
+**計測機能**
+- 音声処理時間（平均・最大値）の自動計測
+- バッファプール効率（ヒット率・アロケーション数）
+- ユーザー名キャッシュ効率（ヒット率・HTTP呼び出し数）
+- 音声パケット処理統計
+- 1分間隔でのJSON形式ログ出力
+
+**計測制御**
+```bash
+# 計測機能有効（デフォルト）
+cargo build --features metrics
+
+# 計測機能無効（リリース用）
+cargo build --no-default-features
+```
+
 ## 開発時の注意点
 
 - Discordボットが3体必要（選手VC用2体、実況VC用1体）
 - 各ボットには`Server Members Intent`と`Message Content Intent`が必要
 - 音声処理はRustで実行、UIはTypeScript/React
 - ログファイルは`logfile.log`と`stderr.log`に出力される
+- パフォーマンス統計は`logfile.log`に1分間隔で出力される

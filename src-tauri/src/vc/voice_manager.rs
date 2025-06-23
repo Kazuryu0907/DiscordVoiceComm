@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 use crate::vc::types::VoiceUserEvent;
+use crate::vc::metrics::{METRICS, AudioProcessingTimer};
 
 use super::types::{
     PubIdentify, SendEnum, UserInfo, UserVolumesType, VoiceManagerReceiverType, VoiceSenderType,
@@ -33,9 +34,11 @@ impl BufferPool {
         if let Some(pos) = self.buffers.iter().position(|buf| buf.capacity() >= min_capacity) {
             let mut buffer = self.buffers.swap_remove(pos);
             buffer.clear(); // データをクリアするが容量は保持
+            METRICS.record_buffer_pool_get(true); // 再利用
             buffer
         } else {
             // 適切なバッファがない場合は新規作成
+            METRICS.record_buffer_pool_get(false); // 新規作成
             Vec::with_capacity(min_capacity.max(1024)) // 最小1KB確保
         }
     }
@@ -43,7 +46,9 @@ impl BufferPool {
     fn return_buffer(&mut self, buffer: Vec<u8>) {
         if buffer.capacity() > 0 && self.buffers.len() < 128 { // 最大128個まで保持
             self.buffers.push(buffer);
+            METRICS.record_buffer_pool_return();
         }
+        // 容量がない、またはプールが満杯の場合は破棄（統計は記録しない）
     }
 }
 
@@ -55,8 +60,10 @@ static USER_NAME_CACHE: Lazy<Arc<Mutex<LruCache<UserId, String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(LruCache::new(std::num::NonZeroUsize::new(1000).unwrap()))));
 
 // Vec<i16>のpcmデータからpcm f32用のVec<u8>の音声データを作成
-// 最適化: バッファプール使用 + 単一パスでi16→f32→u8変換
+// 最適化: バッファプール使用 + 単一パスでi16→f32→u8変換 + パフォーマンス計測
 async fn convert_voice_data(data: Vec<i16>, volume: f32) -> Vec<u8> {
+    let _timer = AudioProcessingTimer::start(); // 処理時間を自動計測
+    
     let required_capacity = data.len() * 4; // f32 = 4 bytes
     
     // バッファプールから再利用可能なバッファを取得
@@ -136,16 +143,19 @@ impl VoiceManager {
                         debug!("create user_id from {:?}", user_info.user_id);
                         let user_id = UserId::new(user_info.user_id.0);
                         
-                        // 最適化: LRUキャッシュからユーザー名を取得
+                        // 最適化: LRUキャッシュからユーザー名を取得 + 統計記録
                         let user_name = {
                             let mut cache = USER_NAME_CACHE.lock().await;
                             if let Some(cached_name) = cache.get(&user_id) {
+                                METRICS.record_cache_hit();
                                 cached_name.clone()
                             } else {
+                                METRICS.record_cache_miss();
                                 // キャッシュにない場合のみHTTP APIを呼び出し
                                 drop(cache); // lockを早期解放
                                 match http.get_user(user_id).await {
                                     Ok(user) => {
+                                        METRICS.record_http_call();
                                         let name = user.name.clone();
                                         // キャッシュに保存
                                         let mut cache = USER_NAME_CACHE.lock().await;
@@ -153,6 +163,7 @@ impl VoiceManager {
                                         name
                                     }
                                     Err(e) => {
+                                        METRICS.record_http_call(); // 失敗もHTTP呼び出しとしてカウント
                                         debug!("Failed to get user name for {}: {:?}", user_id, e);
                                         format!("User#{}", user_id.get())
                                     }
@@ -179,6 +190,7 @@ impl VoiceManager {
                         // println!("user:{user_info.user_id:?} has {user_info.event:?} from {user_info.identify:?}");
                     }
                     SendEnum::VoiceData(u) => {
+                        METRICS.record_voice_packet_received();
                         let user_volumes = user_volumes.read().await;
                         let volume = match user_volumes.get(&UserId::from(u.user_id.0)) {
                             Some(v) => *v,
@@ -188,6 +200,7 @@ impl VoiceManager {
                         };
                         let pcm = convert_voice_data(u.voice_data, volume).await;
                         tx.send(pcm).await.unwrap();
+                        METRICS.record_voice_packet_processed();
                     }
                 }
             }

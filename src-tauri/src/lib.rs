@@ -9,7 +9,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::{Mutex, RwLock};
-use vc::{config::ConfigManager, types::PubIdentify, vc_client::VC};
+use vc::{config::ConfigManager, types::PubIdentify, vc_client::VC, metrics};
 
 struct Storage {
     vc: Mutex<VC>,
@@ -97,6 +97,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
+            // パフォーマンス統計の定期出力を開始
+            metrics::start_metrics_reporting();
+            
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 update(handle).await.unwrap();
