@@ -4,6 +4,7 @@ use log::{debug, info};
 use serde::Serialize;
 use serenity::model::id::UserId;
 use tauri::{AppHandle, Emitter};
+use tracing::instrument;
 
 use crate::vc::types::VoiceUserEvent;
 
@@ -12,14 +13,16 @@ use super::types::{
 };
 use songbird::model::id::UserId as VoiceUserId;
 
-fn i16tof32(pcm_data: Vec<i16>) -> Vec<f32> {
+#[instrument(skip(pcm_data), fields(samples = pcm_data.len()))]
+pub fn i16tof32(pcm_data: Vec<i16>) -> Vec<f32> {
     pcm_data
         .iter()
         .map(|sample| (*sample as f32) / 32768.0)
         .collect()
 }
 // Vec<i16>のpcmデータからpcm f32用のVec<u8>の音声データを作成
-fn convert_voice_data(data: Vec<i16>, volume: f32) -> Vec<u8> {
+#[instrument(skip(data), fields(samples = data.len(), volume = volume))]
+pub fn convert_voice_data(data: Vec<i16>, volume: f32) -> Vec<u8> {
     let raw = i16tof32(data);
     let bytes: Vec<u8> = raw
         .iter()
@@ -78,6 +81,7 @@ impl VoiceManager {
             let http = serenity::http::Http::new(&token);
             let id_name_map: HashMap<UserId, String> = HashMap::new();
             while let Some(d) = rx.recv().await {
+                let _span = tracing::span!(tracing::Level::TRACE, "voice_message_processing").entered();
                 match d {
                     SendEnum::UserData(user_info) => {
                         // ~~普通に考えて，VC内で頻繁に出入りしなくない？~~
@@ -87,6 +91,7 @@ impl VoiceManager {
                         let user_name = match id_name_map.get(&user_id) {
                             Some(user_name) => user_name.to_owned(),
                             None => {
+                                let _api_span = tracing::span!(tracing::Level::TRACE, "discord_api_request", user_id = %user_id).entered();
                                 let user = http.get_user(user_id).await.unwrap();
                                 user.name
                             }
@@ -94,10 +99,13 @@ impl VoiceManager {
                         let emit_data = EmitData::new(user_info, user_name.clone());
                         app.emit("user-data-changed", emit_data).unwrap();
                         {
-                            let user_lock = user_volumes.read().await;
-                            let need_insert = user_lock.get(&user_id).is_none();
-                            drop(user_lock);
+                            let need_insert = {
+                                let _lock_span = tracing::span!(tracing::Level::TRACE, "rwlock_read_acquire").entered();
+                                let user_lock = user_volumes.read().await;
+                                user_lock.get(&user_id).is_none()
+                            };
                             if need_insert {
+                                let _lock_span = tracing::span!(tracing::Level::TRACE, "rwlock_write_acquire").entered();
                                 let mut user_write = user_volumes.write().await;
                                 user_write.insert(user_id.to_owned(), 1.);
                                 info!("volume set {} to {}", user_name, 1.);
@@ -113,13 +121,19 @@ impl VoiceManager {
                         // println!("user:{user_info.user_id:?} has {user_info.event:?} from {user_info.identify:?}");
                     }
                     SendEnum::VoiceData(u) => {
-                        let user_volumes = user_volumes.read().await;
-                        let volume = match user_volumes.get(&UserId::from(u.user_id.0)) {
-                            Some(v) => *v,
-                            None => {
-                                unreachable!()
+                        let _voice_span = tracing::span!(tracing::Level::TRACE, "voice_data_processing", user_id = %u.user_id.0).entered();
+                        
+                        let volume = {
+                            let _lock_span = tracing::span!(tracing::Level::TRACE, "rwlock_read_acquire").entered();
+                            let user_volumes = user_volumes.read().await;
+                            match user_volumes.get(&UserId::from(u.user_id.0)) {
+                                Some(v) => *v,
+                                None => {
+                                    unreachable!()
+                                }
                             }
                         };
+                        
                         let pcm = convert_voice_data(u.voice_data, volume);
                         tx.send(pcm).await.unwrap();
                     }
@@ -127,6 +141,7 @@ impl VoiceManager {
             }
         });
     }
+    #[instrument(skip(self), fields(user_id = %user_id, volume = volume))]
     pub async fn update_volume(&self, user_id: UserId, volume: f32) {
         let user_volume = self.user_volumes.clone();
         let mut writer = user_volume.write().await;

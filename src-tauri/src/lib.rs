@@ -1,5 +1,5 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-mod vc;
+pub mod vc;
 
 use std::sync::Arc;
 
