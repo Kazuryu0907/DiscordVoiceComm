@@ -10,16 +10,18 @@ use songbird::{
 use std::{
     io::Cursor,
     sync::{Arc, OnceLock},
+    time::Instant,
 };
 use symphonia::{
     core::{codecs::CodecRegistry, probe::Probe},
     default::{codecs::PcmDecoder, register_enabled_codecs, register_enabled_formats},
 };
 use tokio::sync::RwLock;
+use tauri::AppHandle;
 
 use crate::vc::types::JoinInfo;
 
-use super::types::VoiceReceiverType;
+use super::{types::VoiceReceiverType, voice_profiler::VoiceProfiler};
 
 static CODEC_REGISTRY: OnceLock<CodecRegistry> = OnceLock::new();
 static PROBE: OnceLock<Probe> = OnceLock::new();
@@ -51,7 +53,7 @@ impl Sub {
             .register_songbird()
             .await
     }
-    pub async fn join(&self, join_info: JoinInfo, mut rx: VoiceReceiverType) {
+    pub async fn join(&self, join_info: JoinInfo, mut rx: VoiceReceiverType, app_handle: Option<AppHandle>) {
         let ctx = CTX.get();
         let ctx_lock = match ctx {
             None => {
@@ -77,15 +79,33 @@ impl Sub {
             }
             let handler_lock = handler_lock.clone();
             tokio::spawn(async move {
+                let mut profiler = VoiceProfiler::new(app_handle);
+                info!("Voice profiler initialized for Discord VoiceComm output");
+                
                 while let Some(d) = rx.recv().await {
-                    println!("+len:{}", rx.len());
+                    let start_time = Instant::now();
+                    let queue_len = rx.len();
+                    let data_size = d.len();
+                    
+                    // Log basic info (keeping original behavior)
+                    println!("+len:{}", queue_len);
+                    
                     let pcm = d;
                     let adapter = RawAdapter::new(Cursor::new(pcm), 48000, 2);
                     let input = Input::from(adapter);
+                    
                     // handlerをロックしないように毎回dropさせる
                     let mut handler = handler_lock.lock().await;
                     handler.play_input(input);
+                    drop(handler); // Explicit drop to minimize lock time
+                    
+                    let processing_time = start_time.elapsed();
+                    
+                    // Record profiling data
+                    profiler.record_packet(data_size, queue_len, processing_time);
                 }
+                
+                info!("Voice profiler stopped for Discord VoiceComm output");
             });
         }
     }

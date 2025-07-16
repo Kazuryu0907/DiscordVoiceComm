@@ -113,6 +113,7 @@ impl VC {
                     channel_id: sub_info,
                 },
                 vc_rx,
+                Some(app.clone()),
             )
             .await;
     }

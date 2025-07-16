@@ -8,7 +8,7 @@ use tracing::Level;
 fn main() {
     let fs = File::create("./logfile.log").unwrap();
     tracing_subscriber::fmt()
-        .with_max_level(Level::ERROR)
+        .with_max_level(Level::INFO) // Changed from ERROR to INFO for voice profiling
         .with_ansi(false)
         .with_writer(Arc::new(fs))
         .init();

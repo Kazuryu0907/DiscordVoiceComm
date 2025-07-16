@@ -54,6 +54,29 @@ type EmitDataType = {
   name: string;
 };
 
+type VoiceProfileMetrics = {
+  data: {
+    timestamp: number;
+    data_size: number;
+    queue_length: number;
+    processing_time_micros: number;
+  };
+  queue: {
+    current_length: number;
+    max_length: number;
+    avg_length: number;
+    queue_full_events: number;
+  };
+  network: {
+    packets_sent: number;
+    total_bytes_sent: number;
+    send_rate_per_sec: number;
+    avg_packet_size: number;
+    processing_time_avg_micros: number;
+  };
+  uptime_seconds: number;
+};
+
 type PubUserStateType = Map<
   string,
   {
@@ -168,6 +191,33 @@ const Listening = ({ identify }: { identify: IdentifyType }) => {
   );
 };
 
+const VoiceProfileDashboard = ({ metrics }: { metrics: VoiceProfileMetrics | null }) => {
+  if (!metrics) return null;
+  
+  return (
+    <div className="mt-5 p-4 bg-gray-100 rounded-lg">
+      <h3 className="text-lg font-bold mb-3">Voice Profile Monitor</h3>
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <p><strong>Packets Sent:</strong> {metrics.network.packets_sent}</p>
+          <p><strong>Send Rate:</strong> {metrics.network.send_rate_per_sec.toFixed(1)} pkt/s</p>
+          <p><strong>Avg Packet Size:</strong> {metrics.network.avg_packet_size.toFixed(0)} bytes</p>
+        </div>
+        <div>
+          <p><strong>Queue Length:</strong> {metrics.queue.current_length} (max: {metrics.queue.max_length})</p>
+          <p><strong>Processing Time:</strong> {metrics.network.processing_time_avg_micros.toFixed(0)}μs</p>
+          <p><strong>Uptime:</strong> {metrics.uptime_seconds}s</p>
+        </div>
+      </div>
+      {metrics.queue.queue_full_events > 0 && (
+        <div className="mt-2 text-orange-600">
+          <p><strong>⚠ Queue Congestion Events:</strong> {metrics.queue.queue_full_events}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 function App() {
   const [vcs, setVCs] = useState<VcType[]>([]);
   const [channelId, setChannelId] = useState<string>("");
@@ -175,6 +225,7 @@ function App() {
   const [subChannelId, setSubChannelId] = useState<string>("");
   const [usersUpdater,setUsersUpdater] = useState<boolean>(false);
   const [version,setVersion] = useState<string>("");
+  const [voiceMetrics, setVoiceMetrics] = useState<VoiceProfileMetrics | null>(null);
 
   useEffect(() => {
     const fn = async () => {
@@ -187,6 +238,20 @@ function App() {
       getVersion().then(setVersion);
     };
     fn();
+  }, []);
+
+  // Listen for voice profile metrics
+  useEffect(() => {
+    let unlisten: UnlistenFn;
+    const fn = async () => {
+      unlisten = await listen<VoiceProfileMetrics>("voice-profile-metrics", (event) => {
+        setVoiceMetrics(event.payload);
+      });
+    };
+    fn();
+    return () => {
+      if (unlisten) unlisten();
+    };
   }, []);
 
   const onJoin = async () => {
@@ -232,6 +297,7 @@ function App() {
           <p className="text-lg px-4 font-bold">Leave</p>
         </Button>
       </div>
+      <VoiceProfileDashboard metrics={voiceMetrics} />
     </main>
   );
 }
