@@ -112,10 +112,7 @@ impl VoiceEventHandler for Receiver {
                 // SSRCs and map the SSRC to the User ID and maintain this state.
                 // Using this map, you can map the `ssrc` in `voice_packet`
                 // to the user ID and handle their audio packets separately.
-                debug!(
-                    "Speaking state update: user {:?} has SSRC {:?}, using {:?}",
-                    user_id, ssrc, speaking,
-                );
+                // Removed debug print for performance in voice processing hot path
 
                 if let Some(user) = user_id {
                     self.inner.known_ssrcs.insert(*ssrc, *user);
@@ -124,7 +121,9 @@ impl VoiceEventHandler for Receiver {
                         event: VoiceUserEvent::Join,
                         identify: self.identify,
                     };
-                    self.tx.send(SendEnum::UserData(user_data)).await.unwrap();
+                    if let Err(e) = self.tx.send(SendEnum::UserData(user_data)).await {
+                        error!("Failed to send user join data: {}", e);
+                    }
                 }
             }
             Ctx::VoiceTick(tick) => {
@@ -133,7 +132,7 @@ impl VoiceEventHandler for Receiver {
                 let last_tick_was_empty = self.inner.last_tick_was_empty.load(Ordering::SeqCst);
 
                 if speaking == 0 && !last_tick_was_empty {
-                    debug!("No speakers");
+                    // Removed debug print for performance
 
                     self.inner.last_tick_was_empty.store(true, Ordering::SeqCst);
                 } else if speaking != 0 {
@@ -174,10 +173,10 @@ impl VoiceEventHandler for Receiver {
                                 }
                             };
                             if is_listening {
-                                self.tx
-                                    .send(SendEnum::VoiceData(send_data))
-                                    .await
-                                    .expect("tx send failed");
+                                if let Err(e) = self.tx.send(SendEnum::VoiceData(send_data)).await {
+                                    error!("Failed to send voice data: {}", e);
+                                    return None; // Stop processing if channel is closed
+                                }
                             }
                             if let Some(packet) = &data.packet {
                                 let rtp = packet.rtp();
@@ -233,8 +232,10 @@ impl VoiceEventHandler for Receiver {
                     event: VoiceUserEvent::Leave,
                     identify: self.identify,
                 };
-                self.tx.send(SendEnum::UserData(user_data)).await.unwrap();
-                debug!("Client disconnected: user {:?}", user_id);
+                if let Err(e) = self.tx.send(SendEnum::UserData(user_data)).await {
+                    error!("Failed to send user leave data: {}", e);
+                }
+                // User disconnect logged at info level when needed
             }
             _ => {
                 // We won't be registering this struct for any more event classes.
@@ -293,7 +294,7 @@ impl Pub {
     }
     async fn get_ctx(&self) -> Option<Context> {
         let ctx_hash_map = CTXS.read().await;
-        debug!("ctx key:{}", self.user_name);
+        // Removed debug print for performance
         let ctx = ctx_hash_map.get(&self.user_name);
         // ctx.map(|ctx| ctx.cloned())
         ctx.cloned()
@@ -344,7 +345,9 @@ impl Pub {
     async fn _join_vc(&self, manager: Arc<Songbird>, join_info: JoinInfo) {
         if let Err(e) = manager.join(join_info.guild_id, join_info.channel_id).await {
             // Although we failed to join, we need to clear out existing event handlers on the call.
-            _ = manager.remove(join_info.guild_id).await;
+            if let Err(e) = manager.remove(join_info.guild_id).await {
+                error!("Failed to remove from manager during cleanup: {}", e);
+            }
             error!("failed to join vc:{:?}", e);
         }
     }

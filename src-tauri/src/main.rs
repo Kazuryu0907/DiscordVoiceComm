@@ -13,6 +13,8 @@ fn main() {
         .with_writer(Arc::new(fs))
         .init();
     let fs_stderr = File::create("./stderr.log").unwrap();
-    let _redirect = Redirect::stderr(fs_stderr).expect("Failed to redirect stderr");
+    if let Err(e) = Redirect::stderr(fs_stderr) {
+        eprintln!("Warning: Could not redirect stderr: {}", e);
+    }
     discordvoicecommv1_lib::run()
 }

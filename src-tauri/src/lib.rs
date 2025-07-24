@@ -58,13 +58,21 @@ async fn join(
     ch2: String,
     sub_ch: String,
     storage: State<'_, Storage>,
-) -> Result<(), ()> {
+) -> Result<(), String> {
+    // Parse channel IDs with proper error handling
+    let ch1_id = ch1.parse::<u64>()
+        .map_err(|e| format!("Invalid channel ID '{}': {}", ch1, e))?;
+    let ch2_id = ch2.parse::<u64>()
+        .map_err(|e| format!("Invalid channel ID '{}': {}", ch2, e))?;
+    let sub_ch_id = sub_ch.parse::<u64>()
+        .map_err(|e| format!("Invalid sub channel ID '{}': {}", sub_ch, e))?;
+    
     let vc = storage.vc.lock().await;
     vc.join(
         app,
-        ChannelId::new(ch1.parse::<u64>().unwrap()),
-        ChannelId::new(ch2.parse::<u64>().unwrap()),
-        ChannelId::new(sub_ch.parse::<u64>().unwrap()),
+        ChannelId::new(ch1_id),
+        ChannelId::new(ch2_id),
+        ChannelId::new(sub_ch_id),
     )
     .await;
     Ok(())
@@ -99,7 +107,9 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                update(handle).await.unwrap();
+                if let Err(e) = update(handle).await {
+                    eprintln!("Update check failed: {}", e);
+                }
             });
             let res = tauri::async_runtime::block_on(async {
                 vc.start_bot(&pub_token, &pub_token2, &sub_token).await
@@ -115,7 +125,7 @@ pub fn run() {
                 // Explorer表示
                 eprintln!("Error starting bot: {}", e);
                 let shell = app.handle().shell();
-                let pwd = std::env::current_dir().unwrap();
+                let pwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
                 let exp_shell = shell
                     .command("explorer.exe")
                     .arg(pwd);
@@ -126,7 +136,9 @@ pub fn run() {
                     .title("DiscordBot API認証エラー")
                     .blocking_show();
                 if res {
-                    exp_shell.spawn().expect("failed to shell");
+                    if let Err(e) = exp_shell.spawn() {
+                        eprintln!("Failed to open explorer: {}", e);
+                    }
                 }
                 return Err("failed to start bot".to_string().into());
             }
@@ -140,7 +152,10 @@ pub fn run() {
             update_is_listening
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            eprintln!("Fatal error running application: {}", e);
+            std::process::exit(1);
+        });
 }
 
 async fn update(app: AppHandle) -> tauri_plugin_updater::Result<()> {
